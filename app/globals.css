@@ -1,0 +1,102 @@
+@import "tailwindcss";
+
+/*
+  The chrome is a cool, dim instrument — a plate viewer. The artwork is the only
+  warm thing on screen, which is the point of the product. Accent colour is not
+  fixed here: each world tints its own chrome from its styleBible palette, set
+  as --accent on the reader root.
+*/
+:root {
+  --ink: #0d1214;
+  --rail: #151d20;
+  --raised: #1c262a;
+  --hair: #2f3d42;
+  --hair-bright: #435458;
+  --text: #e6e9e7;
+  --dim: #8b9aa0;
+  --dimmer: #5f6f75;
+  --vellum: #ebe5d7;
+  --vellum-ink: #23201a;
+  --accent: #c9a227;
+
+  --plate-max: min(78vh, 44rem);
+}
+
+html {
+  color-scheme: dark;
+}
+
+body {
+  background: var(--ink);
+  color: var(--text);
+  font-family: var(--font-body), Georgia, serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Taxonomy: orders, domains, page numbers, statuses. Never prose. */
+.mono {
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 0.6875rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.display {
+  font-family: var(--font-display), Georgia, serif;
+  font-optical-sizing: auto;
+}
+
+.hairline {
+  border-color: var(--hair);
+}
+
+/* Focus has to survive on both the dark chrome and the vellum diagram. */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+.plate-enter {
+  animation: plate-in 200ms ease-out;
+}
+
+@keyframes plate-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.pending-shimmer {
+  background-image: linear-gradient(
+    100deg,
+    var(--raised) 30%,
+    var(--hair) 48%,
+    var(--raised) 66%
+  );
+  background-size: 300% 100%;
+  animation: shimmer 2.4s linear infinite;
+}
+
+@keyframes shimmer {
+  from {
+    background-position: 160% 0;
+  }
+  to {
+    background-position: -60% 0;
+  }
+}
