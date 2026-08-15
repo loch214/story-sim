@@ -204,7 +204,11 @@ export const fixtureChapter: ChapterResponse = {
     {
       index: 10,
       text: 'Under the haze the equator cooled and the north warmed. Grain now grows where the maps still say tundra, in long strips ploughed between old survey markers nobody has bothered to move.',
-      derivedFrom: 'e7',
+      // Pages 10 and 11 both dramatise e12 — the fields, then the barge that
+      // serves them — so one moment gets room across consecutive pages and e7
+      // goes undramatised. Rule 16: pages are chosen from the chain, not a
+      // printout of it.
+      derivedFrom: 'e12',
       shotType: 'aerial',
       entityRefs: [],
       imagePrompt:

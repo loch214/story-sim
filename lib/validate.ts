@@ -3,7 +3,14 @@ import {
   CANON_CAPS,
   EFFECTS_PER_ORDER,
   EFFECT_MAX_WORDS,
+  ENTITY_PAGES_MAX,
   MOVEMENT_LABEL_MAX_WORDS,
+  PAGES_FROM_ONE_EFFECT_MAX,
+  PAGES_WITHOUT_ENTITIES_MIN,
+  PAGES_WITH_SHORT_SENTENCE_MIN,
+  SHORT_SENTENCE_WORDS,
+  STIFF_REGISTER_PATTERN,
+  sentences,
   MIN_DISTINCT_DOMAINS,
   MIN_DISTINCT_SHOT_TYPES,
   NEGATION_PATTERN,
@@ -170,6 +177,77 @@ export function validateChapter(
     }
   } else if (nowSuperseded !== priorSuperseded) {
     v.push(`Rule 12: an additive rule must not change supersededRules (expected ${priorSuperseded}, got ${nowSuperseded}).`);
+  }
+
+  // 18. Voice, and PAGE TEXT ONLY — the chain is the reasoning layer and stays
+  // precise. Two checkable halves of "reads flat": every sentence arriving at
+  // the same medium-long shape, and reaching for a technical word where an
+  // ordinary one exists.
+  let pagesWithShortSentence = 0;
+  for (const page of chapter.pages) {
+    if (sentences(page.text).some((s) => wordCount(s) <= SHORT_SENTENCE_WORDS)) {
+      pagesWithShortSentence++;
+    }
+    const stiff = STIFF_REGISTER_PATTERN.exec(page.text);
+    if (stiff) {
+      v.push(
+        `Rule 18: page ${page.index} uses "${stiff[0]}". Page text is for a normal reader — ` +
+          'use the ordinary word for it ("underground trains", not "subterranean transit systems"). ' +
+          'Keep the technical register in the chain, where it belongs.',
+      );
+    }
+  }
+  if (pagesWithShortSentence < PAGES_WITH_SHORT_SENTENCE_MIN) {
+    v.push(
+      `Rule 18: only ${pagesWithShortSentence} of ${PAGES_PER_CHAPTER} pages contain a sentence of ${SHORT_SENTENCE_WORDS} words or fewer, ` +
+        `need at least ${PAGES_WITH_SHORT_SENTENCE_MIN}. Every sentence is landing at the same medium length, which is what makes the prose read flat. Vary it.`,
+    );
+  }
+
+  // 16. Pages are SELECTED from the chain, not a printout of it. Left to itself
+  // the model emits one page per node in id order, which is what made the book
+  // read as twelve disconnected facts: no selection, no arrangement, no reason
+  // for page 7 to follow page 6 beyond the numbering. Requiring at least one
+  // effect to carry several pages forces a moment to be given room, and
+  // therefore forces some other effect to go undramatised — which is the
+  // editorial judgement that was missing.
+  const pagesPerEffect = new Map<string, number>();
+  for (const page of chapter.pages) {
+    pagesPerEffect.set(page.derivedFrom, (pagesPerEffect.get(page.derivedFrom) ?? 0) + 1);
+  }
+  const busiest = Math.max(0, ...pagesPerEffect.values());
+  if (busiest < 2) {
+    v.push(
+      'Rule 16: every effect has at most one page, so the chapter is a printout of the chain rather than a book made from it. ' +
+        'At least one effect must carry 2 or more pages — let one moment unfold across consecutive pages — which means at least one other effect gets no page at all. Choose which.',
+    );
+  }
+  if (busiest > PAGES_FROM_ONE_EFFECT_MAX) {
+    const worst = [...pagesPerEffect.entries()].find(([, n]) => n === busiest);
+    v.push(`Rule 16: effect ${worst?.[0]} carries ${busiest} pages, cap is ${PAGES_FROM_ONE_EFFECT_MAX}. The chapter must not collapse onto one idea.`);
+  }
+  const inPageOrder = [...chapter.pages].sort((a, b) => a.index - b.index).map((p) => p.derivedFrom);
+  if (inPageOrder.join(',') === chapter.chain.map((e) => e.id).join(',')) {
+    v.push('Rule 16: the pages walk the chain in its declared order, one node each. Page order must serve the reading, not the node numbering.');
+  }
+
+  // 17. Named entities recur to make the book cohere, but a book set entirely
+  // in three places has no world around it. Caps the repetition and reserves
+  // pages that must go somewhere new.
+  const entityUse = new Map<string, number>();
+  for (const page of chapter.pages) {
+    for (const name of new Set(page.entityRefs)) {
+      entityUse.set(name, (entityUse.get(name) ?? 0) + 1);
+    }
+  }
+  for (const [name, count] of entityUse) {
+    if (count > ENTITY_PAGES_MAX) {
+      v.push(`Rule 17: "${name}" appears on ${count} of ${PAGES_PER_CHAPTER} pages, cap is ${ENTITY_PAGES_MAX}. Entities should recur, not dominate.`);
+    }
+  }
+  const freshPages = chapter.pages.filter((p) => p.entityRefs.length === 0).length;
+  if (freshPages < PAGES_WITHOUT_ENTITIES_MIN) {
+    v.push(`Rule 17: only ${freshPages} pages go somewhere not already named, need at least ${PAGES_WITHOUT_ENTITIES_MIN}. The world has to be bigger than its landmarks.`);
   }
 
   // 15. The arc must tile the twelve pages. This checks the SHAPE only — how

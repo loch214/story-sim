@@ -77,6 +77,32 @@ every world in the library feel the same.
 which effect they dramatise, and the validator enforces both. A chapter whose
 chain never touches prior canon has failed the brief and is rejected.
 
+**Pages are selected from the chain, never printed off it.** One page per node
+in id order is the model's default and it is what made the book read as twelve
+disconnected facts. At least one effect carries several pages, some get none,
+and page order serves the reading. `derivedFrom` is a citation, not a running
+order.
+
+**Two registers, and never mix them.** The chain is analysis and stays precise.
+Page text is for a normal reader: ordinary words where they exist ("underground
+trains", not "subterranean transit systems"), varied sentence length, and
+allowed to be funny or sad rather than uniformly neutral. Rule 18 checks page
+text only.
+
+**Calibrate thresholds against live output, not intuition.** A chapter gets one
+retry. A limit set slightly too tight spends it on a near-miss and leaves none
+for a real fault — which is how both the short-sentence and visualLaw caps were
+first set wrong.
+
+**The scene must dominate the image prompt.** Every plate shares the styleBible
+and the laws, so the scene is the only thing distinguishing one page from the
+next. When the shared prefix was ~80% of the prompt, every image looked the
+same.
+
+**If it is not in the export, it does not exist.** The export is the artefact
+used to review a chapter. `arc` was persisted from the day it shipped but never
+exported, which read as the feature never having landed.
+
 **Quota halts; nothing else does.** Daily allowance exhausted → stop the pool,
 banner the reset time, keep completed pages. A safety refusal or bad prompt on
 one page → styled placeholder, pool continues.

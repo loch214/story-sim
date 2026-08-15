@@ -40,13 +40,12 @@ export function assembleImagePrompt(
 
   const laws = visualLaws.slice(0, PROMPT_LIMITS.visualLawsPerPrompt).join('; ');
 
-  // The laws appear twice, and deliberately. Attention thins out across a
-  // 900-character prompt, so a cast rule stated once between the styleBible and
-  // the scene gets diluted by everything after it — which is how a world without
-  // men came back full of men. Once up front where the model is still weighting
-  // heavily, once at the end next to the composition clause where the last word
-  // lands. The repetition is cheap: two copies of 90 characters against a 2048
-  // budget that currently peaks near 900.
+  // The laws are stated ONCE, up front, where weighting is heaviest. They were
+  // spliced twice while rule fidelity was unproven; with fidelity holding, the
+  // second copy was costing ~230 characters that the scene needed more. Every
+  // plate in a chapter shares the styleBible and the laws, so whatever is left
+  // over is the only thing making one page look different from the next — and
+  // when the shared prefix outweighed the scene, every image looked the same.
   const build = () =>
     [
       styleBible,
@@ -55,7 +54,6 @@ export function assembleImagePrompt(
       `${page.shotType} shot`,
       scene,
       COMPOSITION_CLAUSE,
-      laws && `always true in this world: ${laws}`,
     ]
       .filter((part): part is string => Boolean(part) && part.length > 0)
       .join(SEPARATOR);

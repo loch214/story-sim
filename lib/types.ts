@@ -29,9 +29,25 @@ export const PROMPT_LIMITS = {
   total: 2048,
   styleBible: 600,
   entityDescription: 180,
-  entityRefsPerPage: 3,
-  imagePrompt: 520,
-  visualLaw: 90,
+  /**
+   * Two, not three. Eleven of twelve pages once leaned on the same three
+   * landmarks, which made the book feel like it was set in a single building.
+   */
+  entityRefsPerPage: 2,
+  /**
+   * The scene should dominate the prompt, not trail it. At 520 the shared
+   * prefix — styleBible plus laws plus composition — was roughly 80% of every
+   * prompt, so every plate looked alike. Budgeted against the 2048 cap:
+   * 600 styleBible + 275 laws + 364 entities + 20 shot + 60 composition
+   * + separators leaves comfortable room for this.
+   */
+  imagePrompt: 650,
+  /**
+   * 100, not 90: the model overshot 90 on both live chapters measured (91 and
+   * 94 characters), each time spending the chapter's one retry on a few
+   * characters. The prompt budget absorbs the extra 30 comfortably.
+   */
+  visualLaw: 100,
   /** How many laws ride on one prompt. Matches the canon cap; both ends stay in step. */
   visualLawsPerPrompt: 3,
 } as const;
@@ -67,6 +83,47 @@ export const PAGES_PER_CHAPTER = 12;
  */
 export const ARC_MOVEMENTS = { min: 2, max: 5 } as const;
 export const MOVEMENT_LABEL_MAX_WORDS = 6;
+
+/**
+ * Pages are chosen from the chain, never a printout of it. Left unconstrained
+ * the model writes one page per node in id order, and the book reads as twelve
+ * disconnected facts. At least one effect must carry several pages so a moment
+ * gets room; the cap stops the chapter collapsing onto a single idea.
+ */
+export const PAGES_FROM_ONE_EFFECT_MAX = 4;
+/** How many of the twelve pages one named entity may appear on. */
+export const ENTITY_PAGES_MAX = 5;
+/** Pages that must go somewhere not already in namedEntities. */
+export const PAGES_WITHOUT_ENTITIES_MIN = 3;
+
+/**
+ * Rhythm. Every sentence arriving at the same medium-long shape is most of why
+ * the prose reads flat, and unlike vocabulary it is mechanically checkable: a
+ * chapter has to land a short sentence somewhere. Not every page — an enforced
+ * clipped closer on all twelve would be its own monotony.
+ */
+/**
+ * Calibrated against live output, not guessed: at 7 words the rule fired on a
+ * chapter whose prose was genuinely varied (lengths 6–18, mean 11), which would
+ * have spent the chapter's single retry on a near-miss and left none for a real
+ * structural fault. At 8 it separates actual monotony — everything landing at
+ * 12–18 — from acceptable rhythm.
+ */
+export const SHORT_SENTENCE_WORDS = 8;
+export const PAGES_WITH_SHORT_SENTENCE_MIN = 4;
+
+/**
+ * Register markers for PAGE TEXT ONLY. The chain is the reasoning layer and
+ * stays precise; these are words that make a page read like a survey when there
+ * is an ordinary word for the same thing — "underground trains", not
+ * "subterranean transit systems".
+ *
+ * Deliberately short and high-confidence rather than exhaustive. A blocklist
+ * cannot teach voice, so this catches the repeat offenders and the prompt does
+ * the actual teaching.
+ */
+export const STIFF_REGISTER_PATTERN =
+  /\b(subterranean|transit system\w*|progressive|structural|infrastructure|ecological|carrying capacity|pioneer species|colonis|coloniz|deluge|culvert|precipitation|vegetation|illuminat|utilis|utiliz|facilitat|commenc|subsequently|thereby|aforementioned|comprise|optimal|substantial|numerous|individuals|personnel|residential structure\w*|vehicular|municipal|apparatus|mechanism\w*|equilibrium|proliferat|diminish|cessation|habitation)\b/i;
 export const EFFECTS_PER_ORDER = 4;
 export const MIN_DISTINCT_DOMAINS = 4;
 export const MIN_DISTINCT_SHOT_TYPES = 4;
@@ -280,4 +337,12 @@ export interface StoredImage {
 export function wordCount(text: string): number {
   const trimmed = text.trim();
   return trimmed.length === 0 ? 0 : trimmed.split(/\s+/).length;
+}
+
+/** Sentences of a page's text, for the rhythm check. */
+export function sentences(text: string): string[] {
+  return text
+    .split(/(?<=[.!?])\s+/)
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0);
 }

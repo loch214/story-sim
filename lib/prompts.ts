@@ -3,7 +3,10 @@ import {
   BASELINE,
   CANON_CAPS,
   EFFECTS_PER_ORDER,
+  ENTITY_PAGES_MAX,
   MOVEMENT_LABEL_MAX_WORDS,
+  PAGES_FROM_ONE_EFFECT_MAX,
+  PAGES_WITHOUT_ENTITIES_MIN,
   EFFECT_MAX_WORDS,
   MIN_DISTINCT_DOMAINS,
   MIN_DISTINCT_SHOT_TYPES,
@@ -181,10 +184,61 @@ handed a list.`);
   sections.push(`THEN write exactly ${PAGES_PER_CHAPTER} pages, indices 1 to
 ${PAGES_PER_CHAPTER}, following the arc you just chose.
 
+SELECT AND ARRANGE. Do not write one page per effect in the order you listed them.
+That produces ${PAGES_PER_CHAPTER} disconnected facts in id order, which is the single
+worst thing this book can be. The chain is your research; the pages are what you make
+from it. So:
+
+  - Choose the effects worth dramatising. Some of your ${EFFECTS_PER_ORDER * 3} effects
+    will get no page at all. That is correct — deciding what to leave out is most of what
+    makes this a book.
+  - Give a strong moment ROOM: at least one effect must carry 2 or more consecutive
+    pages, unfolding rather than being stated once. Up to ${PAGES_FROM_ONE_EFFECT_MAX}.
+  - Order the pages for the reading — the arc's movements, cause arriving before
+    consequence, contrast between neighbours — never by effect id.
+  - derivedFrom still names the effect each page dramatises, so the reasoning stays
+    checkable. It is a citation, not a running order.
+
 Write them as a book, not a survey. Each page is a MOMENT — a particular time, a
 particular place, something happening or just about to. Not a summary of a trend, not an
 explanation of a system. If a page could begin "increasingly," or "many people now,"
 rewrite it as the one afternoon when it was true of someone.
+
+This is the difference, and it is the whole difference:
+
+  REPORT (wrong): "Streetlights illuminate empty avenues precisely at dusk. Deep inside
+    the automated substation, cooling fans hum continuously, regulating power grids."
+    — nothing happens. It states a condition and could be any page in any order.
+  BOOK (right): "The streetlights still come on at dusk, all down the avenue, for nobody.
+    In the substation the fans have been running eight months without a service, and
+    somewhere under the floor a bearing has begun to sing."
+    — same facts, but time is passing and something is going wrong.
+
+Verbs of change, not verbs of being. Something is running down, filling up, arriving,
+failing, being repaired for the last time.
+
+THE VOICE. Write like a good writer talking to a normal reader. Not dumbed down, not
+childish, and not literary either — just natural, and enjoyable to read.
+
+  - ORDINARY WORDS. If there is a plain word for the thing, use the plain word. This is
+    the single most common way these pages go wrong:
+      "subterranean transit systems"                    → "underground trains"
+      "the deluge surging down the culvert overwhelms
+       drainage grates"                                 → "the water burst through the drains"
+      "progressive structural collapse"                 → "it came down a floor at a time"
+      "pioneer tree species colonize scorched asphalt"  → "young birches push up through burnt road"
+      "ecological carrying capacity"                    → "how many the land can feed"
+    Technical vocabulary is right in the CHAIN — that is analysis, keep it precise there.
+    It is wrong on the page, which is the part somebody actually reads.
+
+  - VARY SENTENCE LENGTH. This matters as much as word choice. If every sentence runs to
+    the same medium length the page reads flat however good the words are. Put a short
+    one in — three words, or one. Then a long one that runs on and gathers detail. The
+    rhythm is what makes it sound like a person instead of a report.
+
+  - HAVE A FEELING ABOUT IT. Neutral across all twelve pages is its own monotony. A page
+    is allowed to be funny, or sad, or startling, or quietly horrible. Some of these
+    worlds are jokes and some are elegies; write the one you actually have.
 
 Continuity is what makes twelve pages a book instead of twelve facts:
 
@@ -200,21 +254,39 @@ Continuity is what makes twelve pages a book instead of twelve facts:
     Figures stay in crowds, at mid-distance, backs turned, in silhouette.
   - Let tension build and resolve, or fail to. Something should be at stake by the
     middle and answered, or pointedly unanswered, by the end.
+  - VARY THE LOOK. Across the twelve: different times of day, weather, seasons, and
+    scales — a horizon, a room, a pair of hands. Consecutive pages must not share a time
+    of day and a distance. At least ${PAGES_WITHOUT_ENTITIES_MIN} pages go somewhere not
+    in namedEntities at all; no entity appears on more than ${ENTITY_PAGES_MAX} pages.
+    A world that is only ever its three landmarks reads as one building.
+
+PAGE ${PAGES_PER_CHAPTER} IS AN ENDING. Not the last item in a list — the note the book
+goes out on. It should feel chosen: a final image that answers, echoes or quietly refuses
+the opening, and a last line that stops rather than trailing off. Give it a wide or still
+frame. Someone finishing this page should feel the book close, not run out.
 
 Each page:
-  - text: ${PAGE_WORDS.min}–${PAGE_WORDS.max} words. Concrete and specific. Present the
-    scene rather than explaining it; trust the reader to infer the system behind it. No
-    addressing the reader, no moralising, no summarising what the chapter has shown.
-  - derivedFrom: the id of the effect this page dramatises. Every page still traces to
-    the chain — the story is the chain, told in order, not a separate invention.
+  - text: ${PAGE_WORDS.min}–${PAGE_WORDS.max} words, in the voice described above —
+    ordinary words, varied sentence lengths, something felt. Present the scene rather
+    than explaining it; trust the reader to infer the system behind it. No addressing the
+    reader, no moralising, no summarising what the chapter has shown.
+  - derivedFrom: the id of the effect this page dramatises. A citation for checking, not
+    an instruction about order.
   - shotType: use at least ${MIN_DISTINCT_SHOT_TYPES} distinct values across the twelve.
-  - imagePrompt: at most ${PROMPT_LIMITS.imagePrompt} characters describing the SCENE
-    ONLY — subject, setting, arrangement, light. No style words whatsoever: no
-    "illustration", "photorealistic", "anime", "in the style of". Style is applied
-    separately and would conflict.
+  - imagePrompt: UP TO ${PROMPT_LIMITS.imagePrompt} characters, and use them. This is the
+    only part of the image instruction that differs from page to page — everything else
+    the illustrator sees is identical across all twelve, so a thin scene here means a
+    plate that looks like every other plate. Aim for ${Math.round(PROMPT_LIMITS.imagePrompt * 0.6)}+
+    characters of specific visual description: the subject and what it is doing, the
+    setting, the arrangement of things in the frame, the distance, the time of day, the
+    weather and quality of light, the colours and textures actually present, what is worn
+    or carried, what is broken or new. Describe the SCENE ONLY. No style words of any
+    kind — no "illustration", "photorealistic", "anime", "in the style of". Style is
+    applied separately and fights anything you write here.
   - entityRefs: at most ${PROMPT_LIMITS.entityRefsPerPage} names from
     worldCanon.namedEntities that appear in this scene. Their descriptions are spliced in
-    automatically, so do not repeat their appearance in the imagePrompt.
+    automatically, so do not repeat their appearance in the imagePrompt. Most pages
+    should reference none.
   - altText: one sentence describing the image for a screen reader.`);
 
   if (first) {

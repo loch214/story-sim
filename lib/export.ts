@@ -11,9 +11,14 @@ import type { StoredWorld } from './types';
  * v2 adds `failureCode` and `failureMessage` per plate. An export is the only
  * artefact that survives a bad run, so it has to say why each plate failed —
  * without that, a ten-plate cluster took a live replay to explain.
+ *
+ * v3 adds `arc`. It was persisted from the moment it shipped but never
+ * exported, so the one artefact used to review a chapter showed no sign of the
+ * pacing it had chosen — which read as the feature not having shipped at all.
+ * If it is not in the export, it does not exist as far as review is concerned.
  * See docs/SCHEMA.md § Export.
  */
-export const EXPORT_VERSION = 2;
+export const EXPORT_VERSION = 3;
 
 export interface WorldExport {
   version: number;
@@ -28,6 +33,8 @@ export interface WorldExport {
     status: string;
     diagramHints: unknown;
     priorCanon?: unknown;
+    /** The pacing the chapter chose. Omitted before v3 — worlds made then have none. */
+    arc?: unknown;
     chain: unknown;
     pages: unknown;
     plates: {
@@ -65,6 +72,7 @@ export async function buildWorldExport(world: StoredWorld): Promise<WorldExport>
       status: chapter.status,
       diagramHints: chapter.diagramHints,
       priorCanon: chapter.priorCanon,
+      arc: chapter.arc,
       chain: chapter.chain,
       pages: chapter.pages,
       plates: images.map((image) => ({

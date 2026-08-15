@@ -381,6 +381,64 @@ naming a template ("act one", "setup") are discouraged in the prompt.
 
 The reader shows the current movement's label beside the plate number.
 
+### Voice — page text only
+
+Rule 18, and it applies to `pages[].text` alone. The **chain is the reasoning
+layer and stays precise**; technical vocabulary is correct there and wrong on
+the page somebody actually reads.
+
+Two checkable halves of "reads flat":
+
+- **Rhythm.** At least 4 of 12 pages must contain a sentence of ≤8 words. Every
+  sentence landing at the same medium length is most of why prose reads flat,
+  and it is the half a machine can see. Not enforced per page — a clipped closer
+  on all twelve would be its own monotony. Both thresholds were calibrated
+  against live output rather than guessed: at ≤7 words the rule fired on a
+  chapter whose lengths ran 6–18, which would have spent the single retry on a
+  near-miss.
+- **Register.** `STIFF_REGISTER_PATTERN` flags a short, high-confidence list of
+  words that have ordinary equivalents — *subterranean, culvert, deluge,
+  utilise, illuminate, carrying capacity*. Deliberately not exhaustive: a
+  blocklist cannot teach voice, so it catches repeat offenders and the prompt
+  does the teaching, with before/after pairs ("underground trains", not
+  "subterranean transit systems").
+
+Word choice aside, the prompt asks for varied sentence length and for the page
+to have a feeling about itself — funny, sad, startling — because neutral across
+all twelve is its own monotony.
+
+### Pages are selected from the chain, not printed off it
+
+Rule 16. The chain is research; the pages are what gets made from it. Left
+unconstrained the model emits one page per node **in id order** — the export
+showed `derivedFrom` running `e1,e2,…,e12` — and the book reads as twelve
+disconnected facts with no selection and no arrangement. That single coupling
+was the root cause of the report feel, more than tone or pacing.
+
+So the mapping is deliberately **not** a bijection:
+
+- at least one effect carries 2+ pages, letting a moment unfold — cap 4, so the
+  chapter cannot collapse onto one idea;
+- some effects therefore get no page at all, which is the editorial judgement
+  that was missing;
+- page order serves the reading — never effect id;
+- `derivedFrom` remains, so derivation stays checkable. It is a citation, not a
+  running order.
+
+Rule 17 keeps the world bigger than its landmarks: no named entity on more than
+5 of 12 pages, and at least 3 pages somewhere not in `namedEntities` at all.
+Eleven of twelve pages once referenced the same three entities, which read as a
+book set in one building.
+
+### Prompt budget: the scene must dominate
+
+Every plate in a chapter shares the same styleBible and visual laws, so the
+scene is the only thing making one page look different from the next. When the
+shared prefix was ~80% of the prompt, every image looked alike. `imagePrompt` is
+capped at 650 (was 520) and the prompt asks for 390+; `entityRefsPerPage` is 2
+(was 3). Measured on live output, the scene went from ~20% to ~36% of the
+assembled prompt.
+
 ### Pre-flight modes
 
 `mode` distinguishes what the person typed, and matters more than the verdict:
@@ -417,11 +475,10 @@ parameter — the input surface is `prompt` and `steps` — so "no men anywhere"
 merely puts *men* in front of the model. `lib/validate.ts` rule 14 rejects
 negations outright.
 
-Assembly splices them **twice**: once after the styleBible where attention is
-still heavy, once after the composition clause where the last word lands.
-Attention thins across a 900-character prompt, and a cast rule stated once in the
-middle gets diluted by everything after it. They are never dropped to save
-characters — they are the mechanism.
+Assembly splices them **once**, immediately after the styleBible where weighting
+is heaviest. They were spliced twice while fidelity was unproven; with fidelity
+holding, the second copy was spending ~230 characters the scene needed more.
+They are never dropped to save characters — they are the mechanism.
 
 They live in `worldCanon`, not with the frozen styleBible, so a later rule can
 put back what an earlier one took off the page. Chapter 1's styleBible must agree

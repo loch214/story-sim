@@ -8,7 +8,7 @@
 import { DIAGRAM, layoutChain } from '../lib/diagram';
 import { assembleImagePrompt } from '../lib/prompt';
 import { normaliseChapter } from '../lib/normalise';
-import { chapterResponseSchema, PROMPT_LIMITS, wordCount } from '../lib/types';
+import { chapterResponseSchema, PROMPT_LIMITS, SHORT_SENTENCE_WORDS, sentences, wordCount } from '../lib/types';
 import { validateChapter } from '../lib/validate';
 import { FIXTURE_RULE, fixtureChapter } from '../fixtures/chapter-1';
 
@@ -42,6 +42,7 @@ const styleBible = chapter.styleBible ?? '';
 console.log(`  styleBible: ${styleBible.length}/${PROMPT_LIMITS.styleBible} chars`);
 
 let longest = 0;
+const sceneShare: number[] = [];
 for (const page of chapter.pages) {
   const { prompt, droppedEntities, sceneTruncated } = assembleImagePrompt(
     styleBible,
@@ -58,18 +59,120 @@ for (const page of chapter.pages) {
   // ever fails to reach a prompt, every plate on that page silently reverts to
   // the present-day world — which is exactly the bug this mechanism exists for.
   for (const law of chapter.worldCanon.visualLaws) {
-    const occurrences = prompt.split(law).length - 1;
-    if (occurrences < 2) {
+    if (!prompt.includes(law)) {
       failed = true;
-      console.error(`✗ page ${page.index} carries visualLaw "${law.slice(0, 30)}…" ${occurrences}×, expected 2 (front and tail)`);
+      console.error(`✗ page ${page.index} does not carry visualLaw "${law.slice(0, 30)}…"`);
     }
   }
+  // The scene is the only part that differs between plates. When the shared
+  // prefix dominates, every image in the chapter looks the same.
+  sceneShare.push(page.imagePrompt.length / prompt.length);
   if (droppedEntities.length > 0 || sceneTruncated) {
     console.warn(`  page ${page.index} needed truncation: dropped=[${droppedEntities.join(', ')}] scene=${sceneTruncated}`);
   }
 }
 console.log(`✓ Longest assembled prompt: ${longest}/${PROMPT_LIMITS.total} chars`);
-console.log(`✓ ${chapter.worldCanon.visualLaws.length} visual laws reach every plate twice`);
+console.log(`✓ ${chapter.worldCanon.visualLaws.length} visual laws reach every plate`);
+
+{
+  const mean = sceneShare.reduce((a, b) => a + b, 0) / sceneShare.length;
+  const lowest = Math.min(...sceneShare);
+  console.log(`  scene is ${Math.round(mean * 100)}% of the average prompt, ${Math.round(lowest * 100)}% at worst`);
+}
+
+// Pages must be chosen from the chain, not printed off it.
+{
+  const perEffect = new Map<string, number>();
+  for (const p of chapter.pages) perEffect.set(p.derivedFrom, (perEffect.get(p.derivedFrom) ?? 0) + 1);
+  const unused = chapter.chain.filter((e) => !perEffect.has(e.id)).map((e) => e.id);
+  const busiest = Math.max(...perEffect.values());
+  console.log(`  pages per effect: busiest ${busiest}, undramatised [${unused.join(', ') || 'none'}]`);
+
+  const bijection = {
+    ...chapter,
+    pages: chapter.pages.map((p, i) => ({ ...p, derivedFrom: chapter.chain[i].id })),
+  };
+  if (validateChapter(bijection, { chapterNumber: 1 }).some((x) => x.startsWith('Rule 16'))) {
+    console.log('✓ One page per effect in chain order is rejected');
+  } else {
+    failed = true;
+    console.error('✗ A straight one-page-per-effect dump slipped past the validator');
+  }
+
+  const hogged = {
+    ...chapter,
+    pages: chapter.pages.map((p) => ({ ...p, derivedFrom: 'e1' })),
+  };
+  if (validateChapter(hogged, { chapterNumber: 1 }).some((x) => x.startsWith('Rule 16'))) {
+    console.log('✓ A chapter collapsed onto one effect is rejected');
+  } else {
+    failed = true;
+    console.error('✗ A chapter collapsed onto one effect slipped past the validator');
+  }
+}
+
+// Voice: rhythm and register, on page text only.
+{
+  const shortPages = chapter.pages.filter((p) =>
+    sentences(p.text).some((s) => wordCount(s) <= SHORT_SENTENCE_WORDS),
+  ).length;
+  console.log(`  pages with a short sentence: ${shortPages}/${chapter.pages.length}`);
+
+  const flat = {
+    ...chapter,
+    pages: chapter.pages.map((p) => ({
+      ...p,
+      text: 'The northern grain strips were ploughed between survey markers that nobody had bothered to move, and the barges came over them at the speed of a slow bicycle.',
+    })),
+  };
+  if (validateChapter(flat, { chapterNumber: 1 }).some((x) => x.startsWith('Rule 18'))) {
+    console.log('✓ Twelve pages of identical sentence length are rejected');
+  } else {
+    failed = true;
+    console.error('✗ Uniform sentence rhythm slipped past the validator');
+  }
+
+  const stiff = {
+    ...chapter,
+    pages: chapter.pages.map((p, i) =>
+      i === 0
+        ? { ...p, text: 'The subterranean transit systems flooded first. Then the drains gave out.' }
+        : p,
+    ),
+  };
+  if (validateChapter(stiff, { chapterNumber: 1 }).some((x) => x.startsWith('Rule 18'))) {
+    console.log('✓ Technical register in page text is rejected');
+  } else {
+    failed = true;
+    console.error('✗ Stiff register slipped past the validator');
+  }
+
+  // The chain is the reasoning layer and must stay free to be precise.
+  const technicalChain = {
+    ...chapter,
+    chain: chapter.chain.map((e) => ({ ...e, text: 'Progressive structural collapse reduces ecological carrying capacity.' })),
+  };
+  if (validateChapter(technicalChain, { chapterNumber: 1 }).some((x) => x.startsWith('Rule 18'))) {
+    failed = true;
+    console.error('✗ Rule 18 wrongly policed the chain, which is allowed to be technical');
+  } else {
+    console.log('✓ The chain may stay technical');
+  }
+}
+
+// Named entities recur; they do not take over.
+{
+  const everywhere = {
+    ...chapter,
+    pages: chapter.pages.map((p) => ({ ...p, entityRefs: ['The Spindle'] })),
+  };
+  if (validateChapter(everywhere, { chapterNumber: 1 }).some((x) => x.startsWith('Rule 17'))) {
+    console.log('✓ An entity on every page is rejected');
+  } else {
+    failed = true;
+    console.error('✗ An entity appearing on every page slipped past the validator');
+  }
+}
 
 // The arc must tile the pages. The validator checks the shape and deliberately
 // says nothing about the labels, so these cases probe the tiling only.
