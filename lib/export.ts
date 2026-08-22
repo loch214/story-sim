@@ -17,8 +17,13 @@ import type { StoredWorld } from './types';
  * pacing it had chosen — which read as the feature not having shipped at all.
  * If it is not in the export, it does not exist as far as review is concerned.
  * See docs/SCHEMA.md § Export.
+ *
+ * v4 adds `mode`. A chapter is now either derived from a rule or told forward
+ * from a story, and the two are written by different halves of the prompt and
+ * judged by slightly different rules. Reviewing page text without knowing which
+ * one produced it means reviewing against the wrong brief.
  */
-export const EXPORT_VERSION = 3;
+export const EXPORT_VERSION = 4;
 
 export interface WorldExport {
   version: number;
@@ -28,6 +33,8 @@ export interface WorldExport {
     id: string;
     number: number;
     rule: string;
+    /** Which pipeline wrote it. Omitted before v4 — those chapters were all derived. */
+    mode?: string;
     ruleType: string;
     transitionNote?: string;
     status: string;
@@ -67,6 +74,7 @@ export async function buildWorldExport(world: StoredWorld): Promise<WorldExport>
       id: chapter.id,
       number: chapter.number,
       rule: chapter.rule,
+      mode: chapter.mode,
       ruleType: chapter.ruleType,
       transitionNote: chapter.transitionNote,
       status: chapter.status,

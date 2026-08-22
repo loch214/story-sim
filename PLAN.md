@@ -176,6 +176,28 @@ plate 1; the waiting screen says *imagining your world…*. Arrow keys and swipe
 through the twelve plates are the main event, and the diagram no longer sits
 between one chapter's last plate and the next chapter's first.
 
+**Story mode, told forward rather than derived** — built, not yet run live.
+Pre-flight has classified `story` since phase 3, but every story still went
+through the rule pipeline, and the composer said so in an apology under the
+restatement. "A boy was riding his bicycle and got hit by a car" came back as
+twelve pages about road safety. In story mode the chain is now twelve **beats**
+instead of twelve effects, rule 7 relaxes from four domains to two so the model
+stops conscripting an economics beat to fill a quota, and the prompt bans the
+society-wide essay outright. The JSON contract is unchanged, so the reasoning
+diagram, prompt assembly, the render pool and the reader are all untouched. The
+mode travels to storage and into the export, because a chapter reviewed without
+it is reviewed against the wrong brief.
+
+**Plain English on the page** — the voice rules were mostly advice; now they are
+checked. No sentence over 22 words, no semicolons, and the register blocklist
+finally fires: every stem entry in it (`illuminat`, `utilis`, `colonis`,
+`facilitat`) was wrapped in `\b…\b` and could never match the inflected word it
+named, so the list had been enforcing nothing since it shipped. It also grew two
+families it was missing — the politics-and-economics briefing and the literary
+flourish. The fixture chapter was rewritten to meet the new rules; seven of its
+twelve pages failed them, which is the measure of how far the register had
+drifted.
+
 ### 1. Schema and validator
 Types and Zod validators from [docs/SCHEMA.md](docs/SCHEMA.md). A checked-in
 fixture chapter in `fixtures/` that passes every rule, plus deliberately broken

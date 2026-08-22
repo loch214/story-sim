@@ -343,8 +343,8 @@ decode slower.
 { id, createdAt, title, styleBible, palette, worldCanon, chapterDigests }
 
 // chapters
-{ id, worldId, number, rule, ruleType, transitionNote,
-  diagramHints, chain, pages, status,
+{ id, worldId, number, rule, mode, ruleType, transitionNote,
+  diagramHints, arc, chain, pages, status,
   haltedAt, haltMessage,   // set on a quota halt, so resume can tell
                            // whether the UTC day has turned
   priorCanon }             // snapshot of the canon this chapter branched
@@ -387,8 +387,17 @@ Rule 18, and it applies to `pages[].text` alone. The **chain is the reasoning
 layer and stays precise**; technical vocabulary is correct there and wrong on
 the page somebody actually reads.
 
-Two checkable halves of "reads flat":
+The target is somebody telling you what happened — plain, direct, concrete. Not
+literature, not a news report, not a lecture. Four checkable symptoms of prose
+that has drifted away from that:
 
+- **Sentence length ceiling.** No sentence in page text may exceed
+  `LONG_SENTENCE_WORDS` (22). One idea per sentence; a comma holding two
+  thoughts together is usually two sentences. This is the rule that catches
+  "literary" most directly — the fixture ran to 29 words before it existed, and
+  the rewrite that brought every page under 22 lost nothing but the drag.
+- **No semicolons.** `LITERARY_PUNCTUATION`. Nobody speaks one. Two short
+  sentences always do the same work and read faster.
 - **Rhythm.** At least 4 of 12 pages must contain a sentence of ≤8 words. Every
   sentence landing at the same medium length is most of why prose reads flat,
   and it is the half a machine can see. Not enforced per page — a clipped closer
@@ -396,16 +405,28 @@ Two checkable halves of "reads flat":
   against live output rather than guessed: at ≤7 words the rule fired on a
   chapter whose lengths ran 6–18, which would have spent the single retry on a
   near-miss.
-- **Register.** `STIFF_REGISTER_PATTERN` flags a short, high-confidence list of
-  words that have ordinary equivalents — *subterranean, culvert, deluge,
-  utilise, illuminate, carrying capacity*. Deliberately not exhaustive: a
-  blocklist cannot teach voice, so it catches repeat offenders and the prompt
-  does the teaching, with before/after pairs ("underground trains", not
-  "subterranean transit systems").
+- **Register.** `STIFF_REGISTER_PATTERN` flags words that have ordinary
+  equivalents, in three families, because the pages went wrong in three
+  directions: the technical survey (*subterranean, culvert, deluge, utilise,
+  illuminate, carrying capacity*), the politics-and-economics briefing
+  (*governance, jurisdiction, populace, sector, moreover, thus*) and the
+  literary flourish (*whilst, amidst, myriad, gossamer, poignant*). Deliberately
+  not exhaustive: a blocklist cannot teach voice, so it catches repeat offenders
+  and the prompt does the teaching, with before/after pairs ("underground
+  trains", not "subterranean transit systems").
 
-Word choice aside, the prompt asks for varied sentence length and for the page
-to have a feeling about itself — funny, sad, startling — because neutral across
-all twelve is its own monotony.
+  The pattern is built from two lists — whole words and stems matched with any
+  suffix. It has to be, because the earlier single alternation wrapped every
+  entry in `\b…\b`, which silently disabled every stem in it: `illuminat` has no
+  word boundary before the `e` of `illuminate`, so the entry that existed to
+  catch the prompt's own worked example never matched anything. A list that
+  reads as enforcement and enforces nothing is worse than no list.
+
+Beyond what is counted, the prompt bans abstract nouns doing the work — no
+"economic pressure", "the authorities", "the system", but the queue outside the
+door, the padlock, the price chalked on a board — and asks the page to have a
+feeling about itself, funny or sad or startling, because neutral across all
+twelve is its own monotony.
 
 ### Pages are selected from the chain, not printed off it
 
@@ -445,18 +466,44 @@ assembled prompt.
 
 | mode | input | handling |
 |---|---|---|
-| `rule` | a general present-tense condition of reality | derive consequences (today's pipeline) |
-| `story` | particular characters and events, already begun | continue the narrative |
+| `rule` | a general present-tense condition of reality | derive consequences |
+| `story` | particular characters and events, already begun | tell it forward |
 
 The test is *could this be true of a whole world for years, or did it happen to
 someone on a particular day?* When genuinely torn the classifier prefers `story`
 — a premise can always be told as events, but forcing events into a general
 condition loses what the person wrote.
 
-**Story mode is detected but not yet implemented.** Phase 1 classifies and
-labels it; the chapter still runs through the rule pipeline, and the pre-flight
-panel says so rather than silently deriving someone's bicycle accident into an
-institution.
+The mode travels with the chapter: pre-flight → composer → `POST /api/chapter` →
+`buildChapterPrompt` → `validateChapter` → `StoredChapter.mode` → export. It is
+optional on the request and defaults to `rule`, so an older client still gets
+the derived world it expects.
+
+**What actually differs between the two pipelines**
+
+Both return the same JSON contract, and everything downstream — the reasoning
+diagram, prompt assembly, the render pool, the reader — is untouched by the
+mode. Only three things change:
+
+- **The chain.** In `rule` mode it is twelve consequences at three orders. In
+  `story` mode it is twelve **beats** at three orders: the opening and the hours
+  after it, what those lead to over days or weeks, and how it settles. The
+  derivedFrom relation is unchanged and means the same thing — *this was caused
+  by that* — which is why the diagram still reads.
+- **Rule 7.** `MIN_DISTINCT_DOMAINS` is 4 for a derived world and
+  `MIN_DISTINCT_DOMAINS_STORY` is 2 for a story. Demanding four domains of a
+  story is what turned a boy falling off his bicycle into a chapter with an
+  economics beat and a politics beat — the quota conscripted the material.
+  Relaxed, not abolished: a story whose every beat lands in one domain is
+  happening in a vacuum and is still rejected.
+- **Scale.** The story prompt says explicitly that the book is not an essay
+  about what such an event would mean for society: no policy, no statistics, no
+  institutions reacting. One place, a handful of people, something at stake for
+  somebody, settled by beat 12.
+
+The no-named-characters constraint holds in both, because it comes from the
+illustrator rather than from taste — twelve independent generations cannot hold
+a face. A story follows *the boy*, never Tom.
 
 ### Visual laws
 
@@ -504,22 +551,28 @@ replaces the canon. It is bounded by the same caps as any canon.
 
 ## Export
 
-v2 export is JSON, images excluded, so a world stays small enough to paste.
+v4 export is JSON, images excluded, so a world stays small enough to paste.
 
 ```ts
 {
-  version: 2,
+  version: 4,
   exportedAt,                    // ISO string
   world,                         // the full StoredWorld
   chapters: [{
-    id, number, rule, ruleType, transitionNote, status,
-    diagramHints, priorCanon, chain, pages,
+    id, number, rule, mode, ruleType, transitionNote, status,
+    diagramHints, priorCanon, arc, chain, pages,
     plates: [{ pageIndex, seed, promptUsed, status, neuronCost,
                failureCode, failureMessage }],
   }],
   totals: { plates, drawn, neurons },
 }
 ```
+
+`arc` arrived in v3 and `mode` in v4, both for the same reason: the export is
+the artefact a chapter is reviewed from, and reviewing page text without knowing
+whether it was derived from a rule or told forward from a story means reviewing
+it against the wrong brief. Older files omit both — chapters written before the
+fields existed all had an implicit `mode` of `rule`.
 
 A reimported world regenerates from the same prompts but not the same images —
 see § Seeds. `failureCode` and `failureMessage` are what make a bad run

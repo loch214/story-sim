@@ -113,7 +113,7 @@ export const fixtureChapter: ChapterResponse = {
   pages: [
     {
       index: 1,
-      text: 'The sky never fully clears. Dust and pollen, too light now to settle, hang in a pale permanent haze that softens every horizon and turns midday into something closer to a long bright afternoon.',
+      text: 'The sky never fully clears. Dust and pollen are too light to settle now. They hang in a pale haze that softens the hills and stretches midday into a long bright afternoon.',
       derivedFrom: 'e1',
       shotType: 'wide',
       imagePrompt:
@@ -133,7 +133,7 @@ export const fixtureChapter: ChapterResponse = {
     },
     {
       index: 3,
-      text: 'The Spindle rises two kilometres on ribs no thicker than a lamp post. Under the old weight it would have folded before the tenth floor; here it merely sways, and the gardens sway with it.',
+      text: 'The Spindle rises two kilometres on ribs no thicker than a lamp post. Under the old weight it would have folded by the tenth floor. Here it only sways, and the gardens sway with it.',
       derivedFrom: 'e4',
       shotType: 'detail',
       entityRefs: ['The Spindle'],
@@ -143,7 +143,7 @@ export const fixtureChapter: ChapterResponse = {
     },
     {
       index: 4,
-      text: 'Halfweight Port launches nine times a day. The rockets are small enough to be trucked in on flatbeds, and the whole field is fenced with wire rather than walls, like a rural airstrip.',
+      text: 'Halfweight Port launches nine times a day. The rockets are small enough to come in on flatbed trucks. The whole field is fenced with wire, like a farm airstrip.',
       derivedFrom: 'e2',
       shotType: 'aerial',
       entityRefs: ['Halfweight Port'],
@@ -153,7 +153,7 @@ export const fixtureChapter: ChapterResponse = {
     },
     {
       index: 5,
-      text: 'Inside the Spindle there are no lifts. Residents step into the open shaft and descend at the pace of a falling leaf, passing landings, laundry lines and one another on the way down.',
+      text: 'Inside the Spindle there are no lifts. People step into the open shaft and drift down like falling leaves. They pass landings, laundry lines and each other on the way.',
       derivedFrom: 'e6',
       shotType: 'interior',
       entityRefs: ['The Spindle'],
@@ -163,7 +163,7 @@ export const fixtureChapter: ChapterResponse = {
     },
     {
       index: 6,
-      text: 'The deepwater ports emptied inside thirty years. Cranes stand over silted basins, and the warehouses have been let out as cheap ground-floor housing to families who cannot afford the towers.',
+      text: 'The deepwater ports emptied inside thirty years. Cranes stand over silted basins. The warehouses are cheap flats now, let to families who cannot afford the towers.',
       derivedFrom: 'e5',
       shotType: 'wide',
       entityRefs: [],
@@ -173,7 +173,7 @@ export const fixtureChapter: ChapterResponse = {
     },
     {
       index: 7,
-      text: 'The revised building code fits on one sheet. Height is granted almost freely; every square metre of ground is argued over for years. The diagram is pinned in every planning office in the country.',
+      text: 'The new building code fits on one sheet. Height is granted almost freely. A square metre of ground is argued over for years. The diagram hangs in every planning office in the country.',
       derivedFrom: 'e8',
       shotType: 'diagram',
       entityRefs: [],
@@ -227,7 +227,7 @@ export const fixtureChapter: ChapterResponse = {
     },
     {
       index: 12,
-      text: 'Nobody guards the straits any more. The fleets sit instead around flat empty fields in the interior, because a launch corridor is now the only geography that decides anything.',
+      text: 'Nobody guards the straits any more. The fleets sit around flat empty fields inland. A launch corridor is the only ground that decides anything now.',
       derivedFrom: 'e9',
       shotType: 'wide',
       entityRefs: ['Halfweight Port'],

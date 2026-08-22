@@ -26,8 +26,8 @@ type Phase =
   | { kind: 'checking' }
   | { kind: 'interpreted'; rule: string; restated: boolean; mode: PreflightMode }
   | { kind: 'rejected'; reason: string }
-  | { kind: 'generating'; rule: string; startedAt: number }
-  | { kind: 'waiting'; rule: string; secondsLeft: number; message: string }
+  | { kind: 'generating'; rule: string; mode: PreflightMode; startedAt: number }
+  | { kind: 'waiting'; rule: string; mode: PreflightMode; secondsLeft: number; message: string }
   | { kind: 'failed'; title: string; message: string; violations?: string[] };
 
 const EXAMPLES = ['gravity is half as strong', 'a world without women'];
@@ -52,7 +52,7 @@ export default function RuleComposer({ target, onDone, onCancel }: Props) {
   useEffect(() => {
     if (phase.kind !== 'waiting') return;
     if (phase.secondsLeft <= 0) {
-      generate(phase.rule);
+      generate(phase.rule, phase.mode);
       return;
     }
     const timer = setTimeout(() => setPhase({ ...phase, secondsLeft: phase.secondsLeft - 1 }), 1000);
@@ -99,20 +99,21 @@ export default function RuleComposer({ target, onDone, onCancel }: Props) {
     }
   }
 
-  async function generate(rule: string) {
+  async function generate(rule: string, mode: PreflightMode) {
     setElapsed(0);
-    setPhase({ kind: 'generating', rule, startedAt: Date.now() });
+    setPhase({ kind: 'generating', rule, mode, startedAt: Date.now() });
 
     try {
       const payload = appending
         ? {
             rule,
+            mode,
             chapterNumber: target.chapterNumber,
             styleBible: target.world.styleBible,
             worldCanon: target.world.worldCanon,
             chapterDigests: target.world.chapterDigests,
           }
-        : { rule, chapterNumber: 1 };
+        : { rule, mode, chapterNumber: 1 };
 
       const response = await fetch('/api/chapter', {
         method: 'POST',
@@ -127,6 +128,7 @@ export default function RuleComposer({ target, onDone, onCancel }: Props) {
           setPhase({
             kind: 'waiting',
             rule,
+            mode,
             secondsLeft: Number(body.retryAfterSeconds) || 30,
             message: body.message,
           });
@@ -138,10 +140,10 @@ export default function RuleComposer({ target, onDone, onCancel }: Props) {
 
       const chapter = chapterResponseSchema.parse(body.chapter);
       if (appending) {
-        await persistNextChapter(target.world, chapter, rule, target.chapterNumber);
+        await persistNextChapter(target.world, chapter, rule, target.chapterNumber, mode);
         onDone(target.world.id);
       } else {
-        onDone(await persistNewWorld(chapter, rule));
+        onDone(await persistNewWorld(chapter, rule, mode));
       }
     } catch (cause) {
       setPhase({
@@ -180,7 +182,13 @@ export default function RuleComposer({ target, onDone, onCancel }: Props) {
       // model is reasoning.
       <Panel>
         <p className="mono mb-3 text-[var(--accent)]">
-          {waiting ? 'just a moment' : appending ? 'changing your world…' : 'imagining your world…'}
+          {waiting
+            ? 'just a moment'
+            : phase.mode === 'story'
+              ? 'telling your story…'
+              : appending
+                ? 'changing your world…'
+                : 'imagining your world…'}
         </p>
         <p className="display mb-4 text-2xl text-[var(--text)]">{phase.rule}</p>
         {waiting ? (
@@ -190,9 +198,11 @@ export default function RuleComposer({ target, onDone, onCancel }: Props) {
         ) : (
           <>
             <p className="text-[0.95rem] leading-relaxed text-[var(--dim)]">
-              {appending
-                ? 'Working out what this rule changes about the world you already have, then twelve new pages of it.'
-                : 'Working out what follows from this, and what follows from that — then twelve pages of the world it makes.'}{' '}
+              {phase.mode === 'story'
+                ? 'Working out what happens next, and what that leads to — then twelve pages of it.'
+                : appending
+                  ? 'Working out what this rule changes about the world you already have, then twelve new pages of it.'
+                  : 'Working out what follows from this, and what follows from that — then twelve pages of the world it makes.'}{' '}
               This takes about 45 seconds.
             </p>
             <p className="mono mt-4 text-[var(--dimmer)]">{elapsed}s elapsed</p>
@@ -213,24 +223,26 @@ export default function RuleComposer({ target, onDone, onCancel }: Props) {
               : 'interpreted as'}
         </p>
         <p className="display mb-6 text-2xl leading-snug text-[var(--text)]">{phase.rule}</p>
-        {/* Phase 1 detects the mode but only the rule pipeline exists yet, so a
-            story is still derived rather than continued. Saying so beats letting
-            the reader wonder why their bicycle became an institution. */}
         {phase.mode === 'story' && (
           <p className="mb-5 text-[0.95rem] leading-relaxed text-[var(--dimmer)]">
-            Story continuation is not built yet — this will still be derived as a world rather
-            than told forward.
+            This will be told forward as a story — twelve pages of what happens next — rather
+            than derived as a world.
           </p>
         )}
         <div className="flex flex-wrap gap-3">
           <button
             type="button"
-            onClick={() => generate(phase.rule)}
+            onClick={() => generate(phase.rule, phase.mode)}
             className="mono border border-[var(--hair-bright)] px-4 py-2 text-[var(--text)] transition-colors hover:bg-[var(--raised)]"
           >
             {/* Confirming here draws the plates too, so the cost belongs on this
                 button — it is the last point before the neurons are spent. */}
-            {appending ? `write chapter ${target.chapterNumber}` : 'build this world'} · ≈
+            {appending
+              ? `write chapter ${target.chapterNumber}`
+              : phase.mode === 'story'
+                ? 'tell this story'
+                : 'build this world'}{' '}
+            · ≈
             {number.format(PAGES_PER_CHAPTER * NEURONS_PER_PLATE)} neurons
           </button>
           <button type="button" onClick={reset} className="mono px-2 py-2 text-[var(--dimmer)] hover:text-[var(--text)]">

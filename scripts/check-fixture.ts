@@ -8,7 +8,7 @@
 import { DIAGRAM, layoutChain } from '../lib/diagram';
 import { assembleImagePrompt } from '../lib/prompt';
 import { normaliseChapter } from '../lib/normalise';
-import { chapterResponseSchema, PROMPT_LIMITS, SHORT_SENTENCE_WORDS, sentences, wordCount } from '../lib/types';
+import { chapterResponseSchema, DOMAINS, PROMPT_LIMITS, SHORT_SENTENCE_WORDS, sentences, wordCount } from '../lib/types';
 import { validateChapter } from '../lib/validate';
 import { FIXTURE_RULE, fixtureChapter } from '../fixtures/chapter-1';
 
@@ -157,6 +157,74 @@ console.log(`✓ ${chapter.worldCanon.visualLaws.length} visual laws reach every
     console.error('✗ Rule 18 wrongly policed the chain, which is allowed to be technical');
   } else {
     console.log('✓ The chain may stay technical');
+  }
+
+  // A sentence that runs on is the clearest symptom of page text drifting into
+  // literature, and unlike vocabulary it costs nothing to check.
+  const sprawling = {
+    ...chapter,
+    pages: chapter.pages.map((p, i) =>
+      i === 0
+        ? {
+            ...p,
+            text: 'The sky never clears, and the dust that used to fall now hangs above the valley in a pale drifting sheet that softens the hills and turns the middle of the day into a long bright afternoon.',
+          }
+        : p,
+    ),
+  };
+  if (validateChapter(sprawling, { chapterNumber: 1 }).some((x) => x.startsWith('Rule 18'))) {
+    console.log('✓ A sentence over the length cap is rejected');
+  } else {
+    failed = true;
+    console.error('✗ A sprawling sentence slipped past the validator');
+  }
+
+  const semicoloned = {
+    ...chapter,
+    pages: chapter.pages.map((p, i) =>
+      i === 0
+        ? { ...p, text: 'The sky never clears; the dust simply hangs there. Rain falls slowly. It feels warm.' }
+        : p,
+    ),
+  };
+  if (validateChapter(semicoloned, { chapterNumber: 1 }).some((x) => x.startsWith('Rule 18'))) {
+    console.log('✓ A semicolon in page text is rejected');
+  } else {
+    failed = true;
+    console.error('✗ A semicolon slipped past the validator');
+  }
+}
+
+// Story chapters follow one sequence of events through a few lives. Demanding
+// they span four domains is what turned a bicycle accident into a chapter with
+// an economics beat, so rule 7 relaxes for them — and only for them.
+{
+  const twoDomains = {
+    ...chapter,
+    chain: chapter.chain.map((e, i) => ({ ...e, domain: i < 6 ? DOMAINS[0] : DOMAINS[4] })),
+  };
+  const asRule = validateChapter(twoDomains, { chapterNumber: 1 }).some((x) => x.startsWith('Rule 7'));
+  const asStory = validateChapter(twoDomains, { chapterNumber: 1, mode: 'story' }).some((x) =>
+    x.startsWith('Rule 7'),
+  );
+  if (asRule && !asStory) {
+    console.log('✓ Domain spread is required of a derived world, relaxed for a story');
+  } else {
+    failed = true;
+    console.error(`✗ Rule 7 did not follow the mode (rule=${asRule}, story=${asStory})`);
+  }
+
+  // Relaxed, not abolished: a story whose every beat lands in one domain is
+  // happening in a vacuum, and that is still rejected.
+  const singleDomain = {
+    ...chapter,
+    chain: chapter.chain.map((e) => ({ ...e, domain: DOMAINS[0] })),
+  };
+  if (validateChapter(singleDomain, { chapterNumber: 1, mode: 'story' }).some((x) => x.startsWith('Rule 7'))) {
+    console.log('✓ A story confined to one domain is still rejected');
+  } else {
+    failed = true;
+    console.error('✗ A single-domain story slipped past the validator');
   }
 }
 

@@ -8,7 +8,9 @@ import {
   PAGES_FROM_ONE_EFFECT_MAX,
   PAGES_WITHOUT_ENTITIES_MIN,
   EFFECT_MAX_WORDS,
+  LONG_SENTENCE_WORDS,
   MIN_DISTINCT_DOMAINS,
+  MIN_DISTINCT_DOMAINS_STORY,
   MIN_DISTINCT_SHOT_TYPES,
   PAGES_PER_CHAPTER,
   PAGE_WORDS,
@@ -16,6 +18,7 @@ import {
   TRANSITION_NOTE_MAX_WORDS,
   WORLD_TITLE_MAX_WORDS,
   type ChapterDigest,
+  type ChapterMode,
   type WorldCanon,
 } from './types';
 
@@ -78,6 +81,14 @@ Input: ${JSON.stringify(input)}`;
 export interface ChapterPromptInput {
   rule: string;
   chapterNumber: number;
+  /**
+   * Which pipeline to run. `rule` derives a world from a change to reality;
+   * `story` tells forward something the person has already started. Defaults to
+   * `rule`. Before this existed a story was pushed through the rule pipeline,
+   * and "a boy fell off his bicycle" came back as twelve pages about municipal
+   * transport policy — which is exactly the failure the mode was detected for.
+   */
+  mode?: ChapterMode;
   /** Frozen from chapter 1. Absent when generating chapter 1. */
   styleBible?: string;
   worldCanon?: WorldCanon;
@@ -88,11 +99,29 @@ export interface ChapterPromptInput {
 
 export function buildChapterPrompt(input: ChapterPromptInput): string {
   const { rule, chapterNumber, styleBible, worldCanon, chapterDigests, violations } = input;
+  const mode = input.mode ?? 'rule';
+  const story = mode === 'story';
   const first = chapterNumber === 1;
 
   const sections: string[] = [];
 
-  sections.push(`You are writing a short illustrated book about a world that has changed.
+  sections.push(
+    story
+      ? `You are telling a short illustrated story.
+
+Somebody has started it and stopped. Your job is to tell it forward and finish it, in
+twelve pages. It is a storybook: things happen to somebody, in order, and it ends.
+
+It is NOT an essay about what such an event would mean for society. No policy, no
+economics, no statistics, no institutions reacting. If the story is a boy falling off his
+bicycle, the book is about that afternoon and what came of it — not about road safety.
+
+Baseline: "${BASELINE}" — this is the ordinary present-day world. Anything strange in it
+is strange because the story says so, and everything else stays normal.
+
+The opening you were given: ${rule}
+Chapter: ${chapterNumber}`
+      : `You are writing a short illustrated book about a world that has changed.
 
 It has to hold together like a world — consequences following from causes — and it has
 to read like a book, not a briefing. Both. If you only get one, get the reading.
@@ -102,10 +131,13 @@ below. Every consequence must be legible as a divergence from the world the read
 already knows. Do not relocate to a fantasy or historical setting.
 
 Rule entering this world now: ${rule}
-Chapter: ${chapterNumber}`);
+Chapter: ${chapterNumber}`,
+  );
 
   if (!first && worldCanon) {
-    sections.push(`This world already exists. Its canon:
+    sections.push(`This world already exists.${
+      story ? ' Your story happens inside it, and must obey it.' : ''
+    } Its canon:
 
 ${JSON.stringify(worldCanon, null, 1)}
 
@@ -138,7 +170,31 @@ holds, revise what the new rule changes, and drop the least important entry when
 would be exceeded.`);
   }
 
-  sections.push(`FIRST, derive the causal chain. Do this before writing any prose — the pages
+  sections.push(
+    story
+      ? `FIRST, work out what happens. Do this before writing any prose — the pages are
+made from these beats, not the other way round.
+
+Twelve beats, in the order they happen, ids "e1" through "e12":
+
+  - Exactly ${EFFECTS_PER_ORDER} beats of order 1: the opening and what follows from it
+    within hours.
+  - Exactly ${EFFECTS_PER_ORDER} beats of order 2: what those lead to over the following
+    days or weeks.
+  - Exactly ${EFFECTS_PER_ORDER} beats of order 3: how it settles, or fails to.
+  - Each text at most ${EFFECT_MAX_WORDS} words. Write them as events: somebody does
+    something, something happens, something is found out.
+  - derivedFrom: order-1 beats reference {"kind":"rule"}, meaning the opening. Order-2
+    beats reference at least one order-1 beat id. Order-3 beats reference at least one
+    order-2 beat id. Each beat is CAUSED by the one it names, not merely later than it.
+  - Each tagged with the domain it touches. Use at least ${MIN_DISTINCT_DOMAINS_STORY}
+    distinct domains — but do NOT go hunting for an economics beat or a politics beat to
+    fill a quota. Tag what the beat actually is.
+
+Keep it at human scale throughout. One place, a handful of people, a few days or a few
+years. Something must be at stake for somebody, and by beat 12 it is settled — well,
+badly, or in a way nobody expected.`
+      : `FIRST, derive the causal chain. Do this before writing any prose — the pages
 are derived from the chain, not the other way round.
 
   - Exactly ${EFFECTS_PER_ORDER} first-order effects: direct consequences of the rule.
@@ -153,29 +209,39 @@ are derived from the chain, not the other way round.
 
 Reason rigorously here: second and third order effects should be the ones a thoughtful
 person would not have guessed, and should follow necessarily from their parents. This
-part is analysis. The pages that come out of it are not.`);
+part is analysis. The pages that come out of it are not.`,
+  );
 
-  sections.push(`THEN choose the ARC — the shape this particular premise wants.
+  sections.push(`THEN choose the ARC — the shape this particular ${story ? 'story' : 'premise'} wants.
 
-Do not reach for a default. A rule that lasts a single day and a rule that reshapes
-civilisation over generations are not the same story and must not have the same rhythm.
-Ask what span this premise actually covers, then divide the twelve pages into
+Do not reach for a default. ${
+    story
+      ? 'A story that all happens in one night and one that runs over years are not the same shape.'
+      : 'A rule that lasts a single day and a rule that reshapes civilisation over ' +
+        'generations are not the same story and must not have the same rhythm.'
+  }
+Ask what span this actually covers, then divide the twelve pages into
 ${ARC_MOVEMENTS.min}–${ARC_MOVEMENTS.max} movements that fit it.
 
   - Each movement: a label of at most ${MOVEMENT_LABEL_MAX_WORDS} words, plus fromPage
     and toPage.
   - Contiguous, in order, covering pages 1 to ${PAGES_PER_CHAPTER} with no gaps or
     overlaps. Movements may be different lengths — give the interesting part more pages.
-  - Label them for what HAPPENS in them, in this world's own terms. Not "act one",
-    "beginning", "setup", "part 2" — those are labels for a template, and this is not a
-    template.
+  - Label them for what HAPPENS in them, in plain words. Not "act one", "beginning",
+    "setup", "part 2" — those are labels for a template, and this is not a template.
 
-Shapes that fit different premises, as illustrations only — invent your own:
-  a rule lasting 24 hours → "the first hour" / "everyone at once" / "the long night" /
+Shapes that fit different ${story ? 'stories' : 'premises'}, as illustrations only — invent your own:
+${
+    story
+      ? `  one night → "before it happened" / "the hour after" / "waiting for morning" /
+    "what they told people later"
+  something found → "finding it" / "keeping it quiet" / "it gets out" / "afterwards"`
+      : `  a rule lasting 24 hours → "the first hour" / "everyone at once" / "the long night" /
     "what was still broken by morning"
   a permanent physical change → "the year the weight went" / "improvising" /
     "the new normal" / "children who never knew the old way"
-  a rule that removes something → "noticing" / "the workarounds" / "the settlement"
+  a rule that removes something → "noticing" / "the workarounds" / "the settlement"`
+  }
 
 The arc governs the pages: they are read in order, and page 7 should feel later than
 page 3. Something must develop across the twelve. A reader should feel carried, not
@@ -184,80 +250,102 @@ handed a list.`);
   sections.push(`THEN write exactly ${PAGES_PER_CHAPTER} pages, indices 1 to
 ${PAGES_PER_CHAPTER}, following the arc you just chose.
 
-SELECT AND ARRANGE. Do not write one page per effect in the order you listed them.
-That produces ${PAGES_PER_CHAPTER} disconnected facts in id order, which is the single
-worst thing this book can be. The chain is your research; the pages are what you make
-from it. So:
+SELECT AND ARRANGE. Do not write one page per ${story ? 'beat' : 'effect'} in the order
+you listed them. That produces ${PAGES_PER_CHAPTER} disconnected ${story ? 'snapshots' : 'facts'}
+in id order, which is the single worst thing this book can be. The chain is your
+groundwork; the pages are what you make from it. So:
 
-  - Choose the effects worth dramatising. Some of your ${EFFECTS_PER_ORDER * 3} effects
+  - Choose what is worth showing. Some of your ${EFFECTS_PER_ORDER * 3} ${story ? 'beats' : 'effects'}
     will get no page at all. That is correct — deciding what to leave out is most of what
     makes this a book.
-  - Give a strong moment ROOM: at least one effect must carry 2 or more consecutive
-    pages, unfolding rather than being stated once. Up to ${PAGES_FROM_ONE_EFFECT_MAX}.
-  - Order the pages for the reading — the arc's movements, cause arriving before
-    consequence, contrast between neighbours — never by effect id.
-  - derivedFrom still names the effect each page dramatises, so the reasoning stays
-    checkable. It is a citation, not a running order.
+  - Give a strong moment ROOM: at least one ${story ? 'beat' : 'effect'} must carry 2 or
+    more consecutive pages, unfolding rather than being stated once. Up to
+    ${PAGES_FROM_ONE_EFFECT_MAX}.
+  - Order the pages for the reading — the movements of the arc, cause arriving before
+    consequence, contrast between neighbours — never by id.
+  - derivedFrom still names the ${story ? 'beat' : 'effect'} each page comes from, so the
+    reasoning stays checkable. It is a citation, not a running order.
 
-Write them as a book, not a survey. Each page is a MOMENT — a particular time, a
-particular place, something happening or just about to. Not a summary of a trend, not an
-explanation of a system. If a page could begin "increasingly," or "many people now,"
-rewrite it as the one afternoon when it was true of someone.
+Each page is a MOMENT — a particular time, a particular place, something happening or
+just about to. Not a summary of a trend, not an explanation of a system. If a page could
+begin "increasingly," or "many people now," rewrite it as the one afternoon when it was
+true of someone.
 
 This is the difference, and it is the whole difference:
 
   REPORT (wrong): "Streetlights illuminate empty avenues precisely at dusk. Deep inside
     the automated substation, cooling fans hum continuously, regulating power grids."
     — nothing happens. It states a condition and could be any page in any order.
-  BOOK (right): "The streetlights still come on at dusk, all down the avenue, for nobody.
-    In the substation the fans have been running eight months without a service, and
-    somewhere under the floor a bearing has begun to sing."
+  BOOK (right): "The streetlights still come on at dusk, all down the road, for nobody.
+    In the substation the fans have run eight months without a service. Something under
+    the floor has started to squeal."
     — same facts, but time is passing and something is going wrong.
 
 Verbs of change, not verbs of being. Something is running down, filling up, arriving,
-failing, being repaired for the last time.
+failing, being fixed for the last time.`);
 
-THE VOICE. Write like a good writer talking to a normal reader. Not dumbed down, not
-childish, and not literary either — just natural, and enjoyable to read.
+  sections.push(`THE VOICE. This is the part that keeps coming back wrong, so read it twice.
 
-  - ORDINARY WORDS. If there is a plain word for the thing, use the plain word. This is
-    the single most common way these pages go wrong:
-      "subterranean transit systems"                    → "underground trains"
-      "the deluge surging down the culvert overwhelms
-       drainage grates"                                 → "the water burst through the drains"
-      "progressive structural collapse"                 → "it came down a floor at a time"
-      "pioneer tree species colonize scorched asphalt"  → "young birches push up through burnt road"
-      "ecological carrying capacity"                    → "how many the land can feed"
-    Technical vocabulary is right in the CHAIN — that is analysis, keep it precise there.
-    It is wrong on the page, which is the part somebody actually reads.
+Write like a person telling somebody what happened. Plain, direct, concrete. This is a
+picture book somebody reads for pleasure. It is not literature, not a news report, not a
+lecture, and not an essay about society. Somebody should read each page once, at normal
+speed, and get it — no sentence they have to go back over.
 
-  - VARY SENTENCE LENGTH. This matters as much as word choice. If every sentence runs to
-    the same medium length the page reads flat however good the words are. Put a short
-    one in — three words, or one. Then a long one that runs on and gathers detail. The
-    rhythm is what makes it sound like a person instead of a report.
+Four hard rules. All four are checked automatically, and a chapter that breaks them is
+rejected and rewritten:
 
+  1. NO SENTENCE LONGER THAN ${LONG_SENTENCE_WORDS} WORDS, and most much shorter. One
+     idea per sentence. A sentence with a comma holding two thoughts together is usually
+     two sentences.
+  2. NO SEMICOLONS. Nobody speaks a semicolon.
+  3. ORDINARY WORDS. If there is a plain word for the thing, use the plain word. This is
+     the single most common way these pages go wrong:
+       "subterranean transit systems"                    → "underground trains"
+       "the deluge surging down the culvert overwhelms
+        the drainage grates"                             → "the water burst through the drains"
+       "progressive structural collapse"                 → "it came down a floor at a time"
+       "pioneer tree species colonize scorched asphalt"  → "young birches push up through burnt road"
+       "ecological carrying capacity"                    → "how many the land can feed"
+     Technical vocabulary is right in the CHAIN — that is the groundwork, keep it precise
+     there. It is wrong on the page, which is the part somebody actually reads.
+  4. VARY SENTENCE LENGTH. At least four of the twelve pages must contain a sentence of
+     eight words or fewer. If every sentence lands at the same medium length the page
+     reads flat however good the words are. Put a short one in. Three words, or one. Then
+     a longer one that gathers a little detail. That rhythm is what makes it sound like a
+     person instead of a report.
+
+Two more, judged rather than counted, and just as important:
+
+  - NO ABSTRACT NOUN DOING THE WORK. Not "economic pressure", "social change", "the
+    authorities", "resources", "the system", "the population". Show one thing a person
+    could point at instead: a queue outside a door, a padlock, a price chalked on a
+    board, a bus that stops coming.
   - HAVE A FEELING ABOUT IT. Neutral across all twelve pages is its own monotony. A page
     is allowed to be funny, or sad, or startling, or quietly horrible. Some of these
-    worlds are jokes and some are elegies; write the one you actually have.
+    books are jokes and some are elegies. Write the one you actually have.`);
 
-Continuity is what makes twelve pages a book instead of twelve facts:
+  sections.push(`Continuity is what makes twelve pages a book instead of twelve ${story ? 'snapshots' : 'facts'}:
 
   - RECURRING PLACES AND OBJECTS carry the story. Put them in namedEntities and bring
     them back in later movements, changed by what has happened. The same tower early and
     late, the same machine working and then abandoned. This is the strongest tool you
     have and the illustrator can draw it consistently — use it on at least two entities.
-  - UNNAMED ROLES, not named people: "the last mechanic on the line", "the night crew",
-    "a child born after". A role can return without being the same individual.
+  - UNNAMED ROLES, not named people: ${story ? '"the boy", "his sister", "the man from the garage"' : '"the last mechanic on the line", "the night crew", "a child born after"'}.
+    A role can come back page after page without ever being given a name or a face.
   - NO recurring named character, and no character described by face or features. The
     illustrator generates each page independently and cannot hold a person's face across
     images. Naming someone makes the reader expect a face that will not survive.
-    Figures stay in crowds, at mid-distance, backs turned, in silhouette.
+    Figures stay in crowds, at mid-distance, backs turned, in silhouette.${
+    story
+      ? ' The person this story follows is a role in the text and a shape in the pictures: "the boy", never a name and never a face.'
+      : ''
+  }
   - Let tension build and resolve, or fail to. Something should be at stake by the
     middle and answered, or pointedly unanswered, by the end.
   - VARY THE LOOK. Across the twelve: different times of day, weather, seasons, and
     scales — a horizon, a room, a pair of hands. Consecutive pages must not share a time
     of day and a distance. At least ${PAGES_WITHOUT_ENTITIES_MIN} pages go somewhere not
-    in namedEntities at all; no entity appears on more than ${ENTITY_PAGES_MAX} pages.
+    in namedEntities at all, and no entity appears on more than ${ENTITY_PAGES_MAX} pages.
     A world that is only ever its three landmarks reads as one building.
 
 PAGE ${PAGES_PER_CHAPTER} IS AN ENDING. Not the last item in a list — the note the book
@@ -266,12 +354,11 @@ the opening, and a last line that stops rather than trailing off. Give it a wide
 frame. Someone finishing this page should feel the book close, not run out.
 
 Each page:
-  - text: ${PAGE_WORDS.min}–${PAGE_WORDS.max} words, in the voice described above —
-    ordinary words, varied sentence lengths, something felt. Present the scene rather
-    than explaining it; trust the reader to infer the system behind it. No addressing the
-    reader, no moralising, no summarising what the chapter has shown.
-  - derivedFrom: the id of the effect this page dramatises. A citation for checking, not
-    an instruction about order.
+  - text: ${PAGE_WORDS.min}–${PAGE_WORDS.max} words, in the voice above — short
+    sentences, ordinary words, something felt. Present the scene rather than explaining
+    it. No addressing the reader, no moralising, no summarising what the chapter showed.
+  - derivedFrom: the id of the ${story ? 'beat' : 'effect'} this page comes from. A
+    citation for checking, not an instruction about order.
   - shotType: use at least ${MIN_DISTINCT_SHOT_TYPES} distinct values across the twelve.
   - imagePrompt: UP TO ${PROMPT_LIMITS.imagePrompt} characters, and use them. This is the
     only part of the image instruction that differs from page to page — everything else
@@ -292,8 +379,11 @@ Each page:
   if (first) {
     sections.push(`This is chapter 1, so you also establish what is frozen for this world forever:
 
-  - worldTitle: at most ${WORLD_TITLE_MAX_WORDS} words, naming the WORLD rather than the
-    rule. "The Long Fall", not "Gravity Is Half As Strong".
+  - worldTitle: at most ${WORLD_TITLE_MAX_WORDS} words. ${
+      story
+        ? 'Name the BOOK, do not restate its opening line. "The Long Way Home", not "A Boy Was Hit By A Car".'
+        : 'Name the WORLD rather than the rule. "The Long Fall", not "Gravity Is Half As Strong".'
+    }
   - styleBible: ONE string, AT MOST ${PROMPT_LIMITS.styleBible} CHARACTERS, describing art
     style, palette, architecture, technology level and how figures look, for a 2D cartoon
     illustrated book. It is prepended to every image prompt in this world forever, so it
@@ -306,7 +396,11 @@ Each page:
 
   sections.push(`worldCanon:
   - baseline must be exactly "${BASELINE}"
-  - activeRules at most ${CANON_CAPS.activeRules}, each with the chapter it entered
+  - activeRules at most ${CANON_CAPS.activeRules}, each with the chapter it entered.${
+    story
+      ? ' For a story, this is what the story has established about this world that a later chapter must respect — often only one entry, sometimes none.'
+      : ''
+  }
   - physicsDeltas at most ${CANON_CAPS.physicsDeltas}
   - invariants at most ${CANON_CAPS.invariants} — facts later chapters must never contradict
   - namedEntities at most ${CANON_CAPS.namedEntities}, each visualDescription at most
@@ -345,7 +439,8 @@ world. They are attached to every image prompt in this world automatically.
   - Visual and concrete. Something a person could look at a picture and check.
     Economic and political consequences do not belong here.
   - Only what the rules actually change about appearances. If the rules change nothing
-    about who or what is visible, return an empty array — do not invent decoration.
+    about who or what is visible, return an empty array — do not invent decoration. An
+    ordinary present-day story usually has no visual laws at all, and that is correct.
   - Write them to survive being read on their own, out of context.
 
 Then write every imagePrompt so it AGREES with these laws. A scene describing a crowd in

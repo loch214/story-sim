@@ -9,9 +9,12 @@ import {
   PAGES_WITHOUT_ENTITIES_MIN,
   PAGES_WITH_SHORT_SENTENCE_MIN,
   SHORT_SENTENCE_WORDS,
+  LONG_SENTENCE_WORDS,
+  LITERARY_PUNCTUATION,
   STIFF_REGISTER_PATTERN,
   sentences,
   MIN_DISTINCT_DOMAINS,
+  MIN_DISTINCT_DOMAINS_STORY,
   MIN_DISTINCT_SHOT_TYPES,
   NEGATION_PATTERN,
   PAGES_PER_CHAPTER,
@@ -21,6 +24,7 @@ import {
   WORLD_TITLE_MAX_WORDS,
   coerceRuleType,
   wordCount,
+  type ChapterMode,
   type ChapterResponse,
   type Effect,
   type WorldCanon,
@@ -30,6 +34,14 @@ export interface ValidateOptions {
   chapterNumber: number;
   /** The canon this chapter is superseding. Absent for chapter 1. */
   priorCanon?: WorldCanon;
+  /**
+   * Which pipeline wrote this chapter. Defaults to `rule`, so every existing
+   * call site keeps the behaviour it had. Only rule 7 differs: a story follows
+   * a few people through one sequence of events, and demanding it span four
+   * domains is what turned a boy on a bicycle into a report on transport
+   * policy. See lib/prompts.ts.
+   */
+  mode?: ChapterMode;
 }
 
 /**
@@ -39,7 +51,7 @@ export interface ValidateOptions {
  */
 export function validateChapter(
   chapter: ChapterResponse,
-  { chapterNumber, priorCanon }: ValidateOptions,
+  { chapterNumber, priorCanon, mode = 'rule' }: ValidateOptions,
 ): string[] {
   const v: string[] = [];
   const byId = new Map<string, Effect>(chapter.chain.map((e) => [e.id, e]));
@@ -114,8 +126,9 @@ export function validateChapter(
 
   // 7 & 8. Variety, so the atlas does not become a monoculture.
   const domains = new Set(chapter.chain.map((e) => e.domain));
-  if (domains.size < MIN_DISTINCT_DOMAINS) {
-    v.push(`Rule 7: chain spans ${domains.size} domains, need at least ${MIN_DISTINCT_DOMAINS}.`);
+  const minDomains = mode === 'story' ? MIN_DISTINCT_DOMAINS_STORY : MIN_DISTINCT_DOMAINS;
+  if (domains.size < minDomains) {
+    v.push(`Rule 7: chain spans ${domains.size} domains, need at least ${minDomains}.`);
   }
   const shots = new Set(chapter.pages.map((p) => p.shotType));
   if (shots.size < MIN_DISTINCT_SHOT_TYPES) {
@@ -180,13 +193,31 @@ export function validateChapter(
   }
 
   // 18. Voice, and PAGE TEXT ONLY — the chain is the reasoning layer and stays
-  // precise. Two checkable halves of "reads flat": every sentence arriving at
-  // the same medium-long shape, and reaching for a technical word where an
-  // ordinary one exists.
+  // precise. Four checkable symptoms of "this does not read like normal
+  // English": a sentence that runs on like a novel, a semicolon nobody would
+  // say out loud, reaching for a technical or academic word where an ordinary
+  // one exists, and every sentence arriving at the same medium-long shape.
   let pagesWithShortSentence = 0;
   for (const page of chapter.pages) {
-    if (sentences(page.text).some((s) => wordCount(s) <= SHORT_SENTENCE_WORDS)) {
+    const parts = sentences(page.text);
+    if (parts.some((s) => wordCount(s) <= SHORT_SENTENCE_WORDS)) {
       pagesWithShortSentence++;
+    }
+    for (const sentence of parts) {
+      const length = wordCount(sentence);
+      if (length > LONG_SENTENCE_WORDS) {
+        v.push(
+          `Rule 18: page ${page.index} has a ${length}-word sentence, cap is ${LONG_SENTENCE_WORDS}: ` +
+            `"${sentence.slice(0, 60)}…". Break it into two. Page text is somebody telling you what happened, ` +
+            'not a novel — one idea per sentence.',
+        );
+      }
+    }
+    if (LITERARY_PUNCTUATION.test(page.text)) {
+      v.push(
+        `Rule 18: page ${page.index} uses a semicolon. Nobody speaks a semicolon. ` +
+          'Use a full stop and two short sentences.',
+      );
     }
     const stiff = STIFF_REGISTER_PATTERN.exec(page.text);
     if (stiff) {

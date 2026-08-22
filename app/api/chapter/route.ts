@@ -5,7 +5,13 @@ import { configFailure, failureResponse, generateJson, type GeminiUsage } from '
 import { chapterSchemaFor } from '@/lib/geminiSchema';
 import { normaliseChapter } from '@/lib/normalise';
 import { buildChapterPrompt } from '@/lib/prompts';
-import { chapterDigestSchema, chapterResponseSchema, worldCanonSchema, type ChapterResponse } from '@/lib/types';
+import {
+  chapterDigestSchema,
+  chapterResponseSchema,
+  PREFLIGHT_MODES,
+  worldCanonSchema,
+  type ChapterResponse,
+} from '@/lib/types';
 import { validateChapter } from '@/lib/validate';
 
 // A full chapter measured 40s in Spike 0. Hobby allows 300.
@@ -17,6 +23,11 @@ const requestSchema = z
   .object({
     rule: z.string().min(1).max(300),
     chapterNumber: z.number().int().min(1),
+    /**
+     * Which pipeline to run, decided at pre-flight. Optional so an older client
+     * — or a hand-rolled request — still gets the derived world it expects.
+     */
+    mode: z.enum(PREFLIGHT_MODES).default('rule'),
     styleBible: z.string().optional(),
     worldCanon: worldCanonSchema.optional(),
     chapterDigests: z.array(chapterDigestSchema).optional(),
@@ -56,6 +67,7 @@ export async function POST(request: Request) {
       prompt: buildChapterPrompt({
         rule: input.rule,
         chapterNumber: input.chapterNumber,
+        mode: input.mode,
         styleBible: input.styleBible,
         worldCanon: input.worldCanon,
         chapterDigests: input.chapterDigests,
@@ -98,6 +110,7 @@ export async function POST(request: Request) {
     const violations = validateChapter(chapter, {
       chapterNumber: input.chapterNumber,
       priorCanon: input.worldCanon,
+      mode: input.mode,
     });
 
     if (violations.length === 0) {

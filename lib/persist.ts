@@ -5,6 +5,7 @@ import {
   CHAPTER_DIGEST_CAP,
   coerceRuleType,
   wordCount,
+  type ChapterMode,
   type ChapterResponse,
   type NamedEntity,
   type Page,
@@ -55,7 +56,11 @@ async function queuePlates(
   }
 }
 
-export async function persistNewWorld(chapter: ChapterResponse, rule: string): Promise<string> {
+export async function persistNewWorld(
+  chapter: ChapterResponse,
+  rule: string,
+  mode: ChapterMode = 'rule',
+): Promise<string> {
   const worldId = crypto.randomUUID();
   const chapterId = `${worldId}:1`;
   const styleBible = chapter.styleBible ?? '';
@@ -77,6 +82,7 @@ export async function persistNewWorld(chapter: ChapterResponse, rule: string): P
     worldId,
     number: 1,
     rule,
+    mode,
     ruleType: coerceRuleType(chapter.ruleType, 1),
     transitionNote: chapter.transitionNote,
     diagramHints: chapter.diagramHints,
@@ -114,6 +120,7 @@ export async function persistNextChapter(
   chapter: ChapterResponse,
   rule: string,
   chapterNumber: number,
+  mode: ChapterMode = 'rule',
 ): Promise<string> {
   const chapterId = `${world.id}:${chapterNumber}`;
 
@@ -133,6 +140,7 @@ export async function persistNextChapter(
     worldId: world.id,
     number: chapterNumber,
     rule,
+    mode,
     ruleType: coerceRuleType(chapter.ruleType, chapterNumber),
     transitionNote: chapter.transitionNote,
     diagramHints: chapter.diagramHints,

@@ -84,10 +84,22 @@ and page order serves the reading. `derivedFrom` is a citation, not a running
 order.
 
 **Two registers, and never mix them.** The chain is analysis and stays precise.
-Page text is for a normal reader: ordinary words where they exist ("underground
-trains", not "subterranean transit systems"), varied sentence length, and
-allowed to be funny or sad rather than uniformly neutral. Rule 18 checks page
-text only.
+Page text is somebody telling you what happened: ordinary words where they exist
+("underground trains", not "subterranean transit systems"), no sentence over 22
+words, no semicolons, varied length, and allowed to be funny or sad rather than
+uniformly neutral. This is a picture book, not literature, a news report or a
+lecture. Rule 18 checks page text only — and every part of it is checked,
+because a rule that reads as enforcement and enforces nothing is worse than no
+rule: the stem entries in the old register pattern were wrapped in `\b…\b` and
+so could never match the inflected words they named.
+
+**Two pipelines behind one contract.** Pre-flight decides `mode`. A `rule` is
+derived into consequences; a `story` is told forward, its chain being twelve
+beats rather than twelve effects. Same JSON, same diagram, same render pool —
+what differs is the chain, the domain-spread floor (rule 7 relaxes from 4 to 2),
+and an explicit ban on turning somebody's afternoon into an essay about society.
+A story that runs through the rule pipeline comes back as twelve pages of
+transport policy, which is what it did before the mode was implemented.
 
 **Calibrate thresholds against live output, not intuition.** A chapter gets one
 retry. A limit set slightly too tight spends it on a near-miss and leaves none

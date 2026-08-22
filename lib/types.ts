@@ -114,18 +114,86 @@ export const PAGES_WITH_SHORT_SENTENCE_MIN = 4;
 
 /**
  * Register markers for PAGE TEXT ONLY. The chain is the reasoning layer and
- * stays precise; these are words that make a page read like a survey when there
- * is an ordinary word for the same thing — "underground trains", not
- * "subterranean transit systems".
+ * stays precise; these are words that make a page read like a policy brief, a
+ * lecture or a novel when there is an ordinary word for the same thing —
+ * "underground trains", not "subterranean transit systems".
  *
- * Deliberately short and high-confidence rather than exhaustive. A blocklist
- * cannot teach voice, so this catches the repeat offenders and the prompt does
- * the actual teaching.
+ * Three families, because the pages went wrong in three directions: the
+ * technical survey, the politics-and-economics briefing, and the literary
+ * flourish. None of them is how a person tells someone what a place was like.
+ *
+ * Deliberately high-confidence rather than exhaustive. A blocklist cannot teach
+ * voice, so this catches the repeat offenders and the prompt does the teaching.
  */
-export const STIFF_REGISTER_PATTERN =
-  /\b(subterranean|transit system\w*|progressive|structural|infrastructure|ecological|carrying capacity|pioneer species|colonis|coloniz|deluge|culvert|precipitation|vegetation|illuminat|utilis|utiliz|facilitat|commenc|subsequently|thereby|aforementioned|comprise|optimal|substantial|numerous|individuals|personnel|residential structure\w*|vehicular|municipal|apparatus|mechanism\w*|equilibrium|proliferat|diminish|cessation|habitation)\b/i;
+const STIFF_WORDS = [
+  // survey / technical
+  'subterranean', 'infrastructure', 'ecological', 'carrying capacity',
+  'pioneer species', 'deluge', 'culvert', 'precipitation', 'vegetation',
+  'apparatus', 'equilibrium', 'cessation', 'habitation', 'aforementioned',
+  'thereby', 'subsequently', 'optimal', 'substantial', 'numerous',
+  'individuals', 'personnel', 'vehicular', 'municipal', 'progressive',
+  'structural',
+  // politics / economics briefing
+  'governance', 'regulatory', 'jurisdiction', 'socioeconomic', 'demographic',
+  'populace', 'citizenry', 'stakeholders', 'sector', 'sectors', 'metrics',
+  'protocols', 'discourse', 'paradigm', 'moreover', 'furthermore',
+  'consequently', 'henceforth', 'whereby', 'wherein', 'thus', 'hence',
+  'empirical', 'methodology', 'hypothesis',
+  // literary flourish
+  'whilst', 'amidst', 'amongst', 'thereafter', 'betwixt', 'myriad', 'plethora',
+  'ineffable', 'liminal', 'ephemeral', 'gossamer', 'verdant', 'azure',
+  'cerulean', 'resplendent', 'poignant', 'wistful', 'testament',
+] as const;
+
+/**
+ * Stems, matched with any suffix. Written as a separate list because the old
+ * single-alternation pattern wrapped every entry in `\b…\b`, which meant every
+ * stem in it — `illuminat`, `utilis`, `colonis`, `facilitat` — could never match
+ * the inflected word it was there to catch: `illuminate` has no word boundary
+ * after `illuminat`. The list read as enforcement and enforced nothing.
+ */
+const STIFF_STEMS = [
+  'transit system', 'residential structure', 'mechanism', 'illuminat', 'utilis',
+  'utiliz', 'facilitat', 'commenc', 'colonis', 'coloniz', 'proliferat',
+  'diminish', 'comprise', 'legislat', 'bureaucra', 'implementat', 'allocat',
+  'prioritis', 'prioritiz', 'quantif', 'phenomen', 'inexorab', 'melanchol',
+  'luminescen', 'susurr',
+] as const;
+
+export const STIFF_REGISTER_PATTERN = new RegExp(
+  String.raw`\b(?:${STIFF_WORDS.join('|')}|(?:${STIFF_STEMS.join('|')})\w*)\b`,
+  'i',
+);
+
+/**
+ * A page sentence longer than this is where the prose stops sounding like
+ * someone telling you what happened and starts sounding like a novel: clause
+ * after clause, gathering detail no reader asked for. Calibrated against the
+ * fixture, whose sentences ran to 29 words before this rule existed — the
+ * rewrite that brought them under 22 lost nothing but the literary drag.
+ *
+ * Paired with SHORT_SENTENCE_WORDS: one caps the ceiling, the other forbids
+ * every sentence landing at the same middling length.
+ */
+export const LONG_SENTENCE_WORDS = 22;
+
+/**
+ * Semicolons are the single clearest marker of a page written as literature
+ * rather than as speech. Nobody says one out loud. Two short sentences always
+ * do the same work and read faster.
+ */
+export const LITERARY_PUNCTUATION = /[;]/;
+
 export const EFFECTS_PER_ORDER = 4;
 export const MIN_DISTINCT_DOMAINS = 4;
+/**
+ * Story chapters follow one sequence of events through a few lives, so the
+ * spread that keeps a *simulated* world from being a monoculture is exactly
+ * wrong for them: forcing four domains is what turned "a boy fell off his
+ * bicycle" into a chapter with a politics beat and an economics beat. Two keeps
+ * the events from happening in a vacuum without conscripting a policy debate.
+ */
+export const MIN_DISTINCT_DOMAINS_STORY = 2;
 export const MIN_DISTINCT_SHOT_TYPES = 4;
 export const PAGE_WORDS = { min: 25, max: 45 } as const;
 export const EFFECT_MAX_WORDS = 25;
@@ -246,6 +314,12 @@ export type CoercedRuleType = 'additive' | 'contradictory';
 export type Ref = z.infer<typeof refSchema>;
 export type Movement = z.infer<typeof movementSchema>;
 export type PreflightMode = (typeof PREFLIGHT_MODES)[number];
+/**
+ * The same two values, named for where they are used after pre-flight: the mode
+ * chosen there decides which chapter pipeline runs, and travels with the
+ * chapter from the composer through the route to the validator and storage.
+ */
+export type ChapterMode = PreflightMode;
 export type Effect = z.infer<typeof effectSchema>;
 export type Page = z.infer<typeof pageSchema>;
 export type NamedEntity = z.infer<typeof namedEntitySchema>;
@@ -290,6 +364,11 @@ export interface StoredChapter {
   worldId: string;
   number: number;
   rule: string;
+  /**
+   * Which pipeline wrote it. Absent on chapters stored before story mode
+   * existed, which were all derived — read it as `rule` when missing.
+   */
+  mode?: ChapterMode;
   ruleType: CoercedRuleType;
   transitionNote?: string;
   diagramHints: DiagramHints;
