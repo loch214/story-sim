@@ -294,6 +294,40 @@ console.log(`✓ ${chapter.worldCanon.visualLaws.length} visual laws reach every
   }
 }
 
+// The chain must actually chain. A third-order effect reaching straight back to
+// the rule — or sideways to another third-order effect — is misfiled. Seen live:
+// e12 lost its order-2 parent and the chapter failed twice on it, so the message
+// has to name the eligible parents rather than restate the constraint.
+{
+  const orphaned = {
+    ...chapter,
+    chain: chapter.chain.map((e) =>
+      e.id === 'e12' ? { ...e, derivedFrom: [{ kind: 'rule' as const }] } : e,
+    ),
+  };
+  const messages = validateChapter(orphaned, { chapterNumber: 1 }).filter((x) => x.startsWith('Rule 5'));
+  if (messages.length > 0 && /e5|e6|e7|e8/.test(messages[0])) {
+    console.log('✓ An order-3 effect skipping its parent is rejected, with candidates named');
+  } else {
+    failed = true;
+    console.error(`✗ Rule 5 did not catch an orphaned order-3 effect usefully: ${messages[0] ?? 'no message'}`);
+  }
+
+  // Sideways: e12 pointing at another order-3 effect is equally misfiled.
+  const sideways = {
+    ...chapter,
+    chain: chapter.chain.map((e) =>
+      e.id === 'e12' ? { ...e, derivedFrom: [{ kind: 'effect' as const, id: 'e11' }] } : e,
+    ),
+  };
+  if (validateChapter(sideways, { chapterNumber: 1 }).some((x) => x.startsWith('Rule 5'))) {
+    console.log('✓ An order-3 effect derived from another order-3 effect is rejected');
+  } else {
+    failed = true;
+    console.error('✗ A sideways order-3 reference slipped past the validator');
+  }
+}
+
 // The scene must dominate the assembled image prompt, not the shared prefix.
 {
   const bloated = {

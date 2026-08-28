@@ -167,6 +167,11 @@ CRITICAL: at least one effect in your chain must derive from the existing world 
 canon above. A chapter whose chain never touches the existing world has failed. Prefer
 interacting with an existing liveTension over spawning unrelated consequences.
 
+A canon reference is IN ADDITION to the effect's normal parent reference, never instead
+of it. derivedFrom is an array: an order-3 effect touching a liveTension carries BOTH,
+e.g. [{"kind":"effect","id":"e6"},{"kind":"liveTension","index":2}]. Dropping the parent
+to make room for the canon reference breaks the chain and the chapter is rejected.
+
 Return a COMPLETE new worldCanon that replaces the one above: carry forward what still
 holds, revise what the new rule changes, and drop the least important entry when a cap
 would be exceeded.`);
@@ -177,7 +182,8 @@ would be exceeded.`);
       ? `FIRST, work out what happens. Do this before writing any prose — the pages are
 made from these beats, not the other way round.
 
-Twelve beats, in the order they happen, ids "e1" through "e12":
+Twelve beats, in the order they happen, ids "e1" through "e12" assigned IN ORDER:
+e1–e4 are order 1, e5–e8 are order 2, e9–e12 are order 3.
 
   - Exactly ${EFFECTS_PER_ORDER} beats of order 1: the opening and what follows from it
     within hours.
@@ -189,6 +195,10 @@ Twelve beats, in the order they happen, ids "e1" through "e12":
   - derivedFrom: order-1 beats reference {"kind":"rule"}, meaning the opening. Order-2
     beats reference at least one order-1 beat id. Order-3 beats reference at least one
     order-2 beat id. Each beat is CAUSED by the one it names, not merely later than it.
+    EVERY order-2 and order-3 beat needs this parent reference — including the last one.
+    Check e9, e10, e11 and e12 individually before you finish: each must name a beat
+    from e5–e8. A beat that reaches straight back to the opening, or sideways to another
+    order-3 beat, is misfiled and the chapter is rejected for it.
   - Each tagged with the domain it touches. Use at least ${MIN_DISTINCT_DOMAINS_STORY}
     distinct domains — but do NOT go hunting for an economics beat or a politics beat to
     fill a quota. Tag what the beat actually is.
@@ -202,12 +212,18 @@ are derived from the chain, not the other way round.
   - Exactly ${EFFECTS_PER_ORDER} first-order effects: direct consequences of the rule.
   - Exactly ${EFFECTS_PER_ORDER} second-order effects: consequences of those.
   - Exactly ${EFFECTS_PER_ORDER} third-order effects: consequences of those.
-  - ids "e1" through "e12". order is 1, 2 or 3.
+  - ids "e1" through "e12", assigned IN ORDER: e1–e4 are order 1, e5–e8 are order 2,
+    e9–e12 are order 3.
   - Each text at most ${EFFECT_MAX_WORDS} words.
   - Each tagged with one domain. Use at least ${MIN_DISTINCT_DOMAINS} distinct domains
     across the chain.
   - derivedFrom: order-1 effects reference {"kind":"rule"}. Order-2 effects reference at
     least one order-1 effect id. Order-3 effects reference at least one order-2 effect id.
+    EVERY order-2 and order-3 effect needs this parent reference — including the last
+    one. Check e9, e10, e11 and e12 individually before you finish: each must name an
+    effect from e5–e8. A third-order effect that reaches straight back to the rule, or
+    to another third-order effect, is not third-order — it is misfiled, and the chapter
+    is rejected for it.
 
 Reason rigorously here: second and third order effects should be the ones a thoughtful
 person would not have guessed, and should follow necessarily from their parents. This

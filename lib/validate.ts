@@ -114,11 +114,17 @@ export function validateChapter(
     }
   }
 
-  // 5. The chain actually chains.
+  // 5. The chain actually chains. The message names the candidate parents
+  // outright: this rule once failed twice on the same chapter, spending the
+  // retry, because stating the constraint without stating the fix left the
+  // model to rediscover which ids were even eligible.
   for (const effect of chapter.chain) {
     if (effect.order === 1) {
       if (!effect.derivedFrom.some((r) => r.kind === 'rule')) {
-        v.push(`Rule 5: order-1 effect ${effect.id} must reference {kind:"rule"}.`);
+        v.push(
+          `Rule 5: order-1 effect ${effect.id} must reference {"kind":"rule"}. ` +
+            'Add it to derivedFrom — a first-order effect comes from the rule itself.',
+        );
       }
       continue;
     }
@@ -127,7 +133,16 @@ export function validateChapter(
       (r) => r.kind === 'effect' && byId.get(r.id)?.order === parentOrder,
     );
     if (!chains) {
-      v.push(`Rule 5: order-${effect.order} effect ${effect.id} must reference at least one order-${parentOrder} effect.`);
+      const candidates = chapter.chain.filter((e) => e.order === parentOrder).map((e) => e.id);
+      const found = effect.derivedFrom
+        .map((r) => (r.kind === 'effect' ? `${r.id} (order ${byId.get(r.id)?.order ?? '?'})` : r.kind))
+        .join(', ');
+      v.push(
+        `Rule 5: order-${effect.order} effect ${effect.id} references [${found}] but none of those is an ` +
+          `order-${parentOrder} effect. Add one of [${candidates.join(', ')}] to its derivedFrom array — ` +
+          'keep the existing entries, this is an addition, not a replacement. ' +
+          `Every order-${effect.order} effect must name the order-${parentOrder} effect it was caused by.`,
+      );
     }
   }
 
