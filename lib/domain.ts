@@ -15,9 +15,3 @@ export const DOMAIN_COLOUR: Record<Domain, string> = {
   conflict: '#d96a5b',
   science: '#7fa5d9',
 };
-
-export const ORDER_LABEL: Record<1 | 2 | 3, string> = {
-  1: 'first order',
-  2: 'second order',
-  3: 'third order',
-};

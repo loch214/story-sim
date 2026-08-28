@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo } from 'react';
-import { DOMAIN_COLOUR, ORDER_LABEL } from '@/lib/domain';
+import { DOMAIN_COLOUR } from '@/lib/domain';
 import { PAGES_PER_CHAPTER, type Effect, type Page, type StoredImage } from '@/lib/types';
 
 interface Props {
@@ -81,26 +81,25 @@ export default function PlatePage({ page, effect, image, onOpenChain }: Props) {
         {page.text}
       </p>
 
+      {/* The order/domain/shotType labels used to sit here on every plate —
+          reading-order chrome that reinforced the deck feel this rework exists
+          to remove. That taxonomy still lives in the chapter, the export and
+          the diagram; here it is reduced to a quiet, unlabelled way back to the
+          reasoning node this page came from. */}
       {effect && (
-        <div
-          className="mt-3 flex w-full items-center justify-between gap-3 px-1"
-          style={{ maxWidth: 'var(--plate-max)' }}
-        >
+        <div className="mt-3 flex w-full justify-start px-1" style={{ maxWidth: 'var(--plate-max)' }}>
           <button
             type="button"
             onClick={() => onOpenChain(effect.id)}
-            className="mono group flex items-center gap-2 text-[var(--dim)] transition-colors hover:text-[var(--text)]"
+            aria-label={`See how this page follows from the chain (${effect.domain})`}
+            className="group rounded-full p-1 transition-opacity opacity-50 hover:opacity-100"
           >
             <span
               aria-hidden
-              className="inline-block h-2 w-2 rounded-full"
+              className="block h-2 w-2 rounded-full"
               style={{ background: DOMAIN_COLOUR[effect.domain] }}
             />
-            <span className="border-b border-transparent group-hover:border-[var(--hair-bright)]">
-              {ORDER_LABEL[effect.order]} · {effect.domain}
-            </span>
           </button>
-          <span className="mono text-[var(--dimmer)]">{page.shotType}</span>
         </div>
       )}
     </article>

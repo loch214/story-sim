@@ -111,6 +111,7 @@ export async function POST(request: Request) {
       chapterNumber: input.chapterNumber,
       priorCanon: input.worldCanon,
       mode: input.mode,
+      worldStyleBible: input.styleBible,
     });
 
     if (violations.length === 0) {

@@ -15,8 +15,8 @@ backend database, no accounts, no login.
 
 ## Checks
 
-`npm run check:fixture` — the fixture chapter against all fifteen rules, prompt
-assembly, and the page 0 layout maths.
+`npm run check:fixture` — the fixture chapter against every validation rule,
+prompt assembly, and the page 0 layout maths.
 `npm run check:queue` — every render-pool path (halt, retry, refusal,
 concurrency, resume) against a fake transport, at zero neuron cost.
 `npx tsx scripts/check-live.ts <response.json>` — a captured Gemini response
@@ -54,8 +54,8 @@ divergence from the known world.
 else — not the rule, not the chain, not the page text. Where the prompt is
 silent it draws the present-day world, so "a world without men" came back full
 of men. `worldCanon.visualLaws` are the channel: short, positive, visual
-statements of what is always on screen, spliced into every prompt twice (front
-and tail) and never trimmed. **Phrase them as presence, never absence** — there
+statements of what is always on screen, spliced into every prompt once and
+never trimmed. **Phrase them as presence, never absence** — there
 is no negative-prompt parameter, so naming a thing to forbid it only summons it.
 The validator rejects negations.
 
@@ -68,6 +68,14 @@ independent images) and from **unnamed roles** — "the night crew", "the last
 mechanic". Never a recurring named character or a described face: naming someone
 promises a face that twelve independent generations cannot keep. Figures stay in
 crowds, mid-distance, backs turned.
+
+**A through-line, checked, not just asked for.** Twelve independently-derived
+facts read as a slide deck no matter how plain the prose is — nothing carries
+from page 3 to page 4. Every chapter now declares `throughLine`: one unnamed
+role (same face/name invariant as above) that most pages put in the scene,
+doing something. `headNoun` — one word from the role — must appear in at least
+7 of 12 pages, checked mechanically so a declared-but-absent through-line
+cannot pass as solved. See docs/SCHEMA.md § Through-line.
 
 **No fixed act structure.** The arc is chosen per premise — a rule lasting a day
 and one reshaping generations must not share a rhythm. A template would make
@@ -84,14 +92,23 @@ and page order serves the reading. `derivedFrom` is a citation, not a running
 order.
 
 **Two registers, and never mix them.** The chain is analysis and stays precise.
-Page text is somebody telling you what happened: ordinary words where they exist
-("underground trains", not "subterranean transit systems"), no sentence over 22
-words, no semicolons, varied length, and allowed to be funny or sad rather than
-uniformly neutral. This is a picture book, not literature, a news report or a
-lecture. Rule 18 checks page text only — and every part of it is checked,
-because a rule that reads as enforcement and enforces nothing is worse than no
-rule: the stem entries in the old register pattern were wrapped in `\b…\b` and
-so could never match the inflected words they named.
+Page text is somebody telling you what happened, casually: contractions and
+fragments are normal, ordinary words where they exist ("underground trains",
+not "subterranean transit systems"), no sentence over 22 words, no semicolons,
+varied length, and allowed to be funny or sad rather than uniformly neutral.
+This is a picture book, not literature, a news report or a lecture. Rule 18
+checks page text only — and every part of it is checked, because a rule that
+reads as enforcement and enforces nothing is worse than no rule: the stem
+entries in the old register pattern were wrapped in `\b…\b` and so could never
+match the inflected words they named.
+
+**Plain words are not enough — an occasion is not the same as a pattern.**
+Prose that broke no rule 18 check could still read as an exhibit caption:
+"launches nine times a day" is plain English describing *how things generally
+are*, not what happened once to somebody. Rule 21 rejects the habitual
+register; rule 22 caps how many pages may open on "The [Name] does
+such-and-such", the sentence shape of a museum placard. Both were added after
+plain vocabulary alone still read as an infographic.
 
 **Two pipelines behind one contract.** Pre-flight decides `mode`. A `rule` is
 derived into consequences; a `story` is told forward, its chain being twelve
@@ -108,8 +125,21 @@ first set wrong.
 
 **The scene must dominate the image prompt.** Every plate shares the styleBible
 and the laws, so the scene is the only thing distinguishing one page from the
-next. When the shared prefix was ~80% of the prompt, every image looked the
-same.
+next. When the shared prefix was ~82% of the prompt, every image looked the
+same regardless of how varied the scenes were. Enforced, not just asserted: the
+scene leads the assembled prompt (diffusion models weight leading tokens
+heaviest), the shared caps shrank, and rule 19 rejects a chapter whose scene
+falls under 40% of any assembled prompt. See docs/SCHEMA.md § Prompt budget.
+
+**Google's image models have no free API tier, and there is no way around it
+via login.** Every Nano Banana / Gemini image model's pricing page reads
+`Free tier: Not available`; the free allowance people mean is the *consumer
+app*, a separate surface from the API. There is also no OAuth scope that lets
+an app spend a signed-in user's consumer quota — no such delegation exists.
+Ruled out during a provider investigation; do not re-propose without new
+information from Google. If Cloudflare's free 10k-neurons/day tier ever stops
+being enough for multiple users, the answer is bring-your-own-**Cloudflare**-
+token (also free, no credit card), not a Gemini image key.
 
 **If it is not in the export, it does not exist.** The export is the artefact
 used to review a chapter. `arc` was persisted from the day it shipped but never

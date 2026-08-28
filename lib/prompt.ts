@@ -13,9 +13,9 @@ export interface AssembledPrompt {
 }
 
 /**
- * The styleBible is prepended to every image prompt; the entity descriptions are
- * spliced in by us, verbatim from canon, so chapter 3's tower is the same tower
- * as chapter 1's. The model never rewrites them.
+ * The scene leads every image prompt; the styleBible follows it, and the
+ * entity descriptions are spliced in by us, verbatim from canon, so chapter
+ * 3's tower is the same tower as chapter 1's. The model never rewrites them.
  *
  * The composition clause exists because the text band sits over the lower
  * third — without it Flux centres the subject and the scrim covers the thing
@@ -40,19 +40,22 @@ export function assembleImagePrompt(
 
   const laws = visualLaws.slice(0, PROMPT_LIMITS.visualLawsPerPrompt).join('; ');
 
-  // The laws are stated ONCE, up front, where weighting is heaviest. They were
-  // spliced twice while rule fidelity was unproven; with fidelity holding, the
-  // second copy was costing ~230 characters that the scene needed more. Every
-  // plate in a chapter shares the styleBible and the laws, so whatever is left
-  // over is the only thing making one page look different from the next — and
-  // when the shared prefix outweighed the scene, every image looked the same.
+  // The laws are stated ONCE. They were spliced twice while rule fidelity was
+  // unproven; with fidelity holding, the second copy was costing ~230
+  // characters the scene needed more.
+  //
+  // Scene first: diffusion models weight leading tokens heaviest, and the
+  // scene is the only thing distinguishing one plate from the next — every
+  // plate in a chapter shares the styleBible and the laws verbatim. When the
+  // shared prefix led the prompt, every image looked the same regardless of
+  // how varied the scenes underneath it were.
   const build = () =>
     [
-      styleBible,
-      laws,
-      kept.map((e) => e.visualDescription).join('; '),
-      `${page.shotType} shot`,
       scene,
+      `${page.shotType} shot`,
+      kept.map((e) => e.visualDescription).join('; '),
+      laws,
+      styleBible,
       COMPOSITION_CLAUSE,
     ]
       .filter((part): part is string => Boolean(part) && part.length > 0)

@@ -1,6 +1,6 @@
 /**
  * Proves the checked-in fixture satisfies the same contract a live Gemini
- * response must: parse, normalise, all fifteen rules, and every assembled
+ * response must: parse, normalise, every validation rule, and every assembled
  * prompt inside the 2048-character endpoint limit.
  *
  *   npm run check:fixture
@@ -35,7 +35,7 @@ if (violations.length > 0) {
   console.error(`✗ ${violations.length} rule violation(s):`);
   for (const violation of violations) console.error(`  ${violation}`);
 } else {
-  console.log('✓ Passes all fifteen validation rules');
+  console.log('✓ Passes all validation rules');
 }
 
 const styleBible = chapter.styleBible ?? '';
@@ -291,6 +291,68 @@ console.log(`✓ ${chapter.worldCanon.visualLaws.length} visual laws reach every
   } else {
     failed = true;
     console.error('✗ A negated visual law slipped past the validator');
+  }
+}
+
+// The scene must dominate the assembled image prompt, not the shared prefix.
+{
+  const bloated = {
+    ...chapter,
+    styleBible:
+      chapter.styleBible +
+      ' '.repeat(0) +
+      'x'.repeat(Math.max(0, PROMPT_LIMITS.styleBible - (chapter.styleBible?.length ?? 0))),
+  };
+  if (validateChapter(bloated, { chapterNumber: 1 }).some((x) => x.startsWith('Rule 19'))) {
+    console.log('✓ A styleBible crowding out the scene is rejected');
+  } else {
+    failed = true;
+    console.error('✗ A bloated styleBible slipped past the validator');
+  }
+}
+
+// The through-line has to actually recur in page text, not just be declared.
+{
+  const untethered = {
+    ...chapter,
+    pages: chapter.pages.map((p) => ({ ...p, text: p.text.replace(new RegExp(chapter.throughLine.headNoun, 'gi'), 'someone') })),
+  };
+  if (validateChapter(untethered, { chapterNumber: 1 }).some((x) => x.startsWith('Rule 20'))) {
+    console.log('✓ A through-line absent from page text is rejected');
+  } else {
+    failed = true;
+    console.error('✗ An untethered through-line slipped past the validator');
+  }
+}
+
+// The habitual register — "how things generally are" — is the precise cause
+// of the infographic-caption feel, separate from stiff vocabulary.
+{
+  const habitual = {
+    ...chapter,
+    pages: chapter.pages.map((p, i) =>
+      i === 0 ? { ...p, text: 'These days the crew usually checks the line every morning before the light comes up.' } : p,
+    ),
+  };
+  if (validateChapter(habitual, { chapterNumber: 1 }).some((x) => x.startsWith('Rule 21'))) {
+    console.log('✓ The habitual register is rejected');
+  } else {
+    failed = true;
+    console.error('✗ Habitual-register page text slipped past the validator');
+  }
+}
+
+// Twelve pages opening on "The [Name]…" read as an exhibit gazetteer.
+{
+  const gazetteer = {
+    ...chapter,
+    pages: chapter.pages.map((p, i) => ({ ...p, text: `The Thing Number ${i} sits where it always has, unbothered.` })),
+  };
+  if (validateChapter(gazetteer, { chapterNumber: 1 }).some((x) => x.startsWith('Rule 22'))) {
+    console.log('✓ Twelve pages opening on a proper noun is rejected');
+  } else {
+    failed = true;
+    console.error('✗ A gazetteer-rhythm chapter slipped past the validator');
   }
 }
 

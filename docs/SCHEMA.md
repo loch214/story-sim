@@ -61,13 +61,26 @@ interface ChapterResponse {
   worldTitle?: string;             // chapter 1 only — ≤6 words
   styleBible?: string;             // chapter 1 only — omitted from the schema thereafter
   diagramHints: DiagramHints;
+  throughLine: ThroughLine;
   chain: Effect[];
   pages: Page[];
   worldCanon: WorldCanon;          // complete replacement
 }
 
 type RuleType = 'additive' | 'contradictory' | 'ambiguous';
+
+interface ThroughLine {
+  role: string;      // ≤6 words, unnamed — "the rope crew", never a name or face
+  headNoun: string;   // one word from role, exactly as it appears on the page
+  want: string;       // ≤15 words — what the role is trying to do across the twelve
+}
 ```
+
+`throughLine` is the thread a reader follows from page 1 to page 12. It exists
+because twelve independently-derived facts read as a slide deck no matter how
+plain the prose is — see § Through-line below. `headNoun` is spliced from `role`
+specifically so rule 20 can check recurrence in page text mechanically, without
+the model self-reporting where it appears.
 
 The model reports its raw classification; **the app** coerces `ambiguous →
 contradictory`. Keeping the policy in code and the honest answer in the output
@@ -246,11 +259,15 @@ Verified against `gemini-3.6-flash`:
 
 ## Image prompt assembly
 
-Assembled by the app, never returned whole by the model:
+Assembled by the app, never returned whole by the model. **Scene first** —
+diffusion models weight leading tokens heaviest, and the scene is the only part
+that differs from plate to plate:
 
 ```
-{styleBible} | {entity visualDescriptions, joined '; '} | {shotType} shot |
-{imagePrompt} |
+{imagePrompt} | {shotType} shot |
+{entity visualDescriptions, joined '; '} |
+{visualLaws, joined '; '} |
+{styleBible} |
 composition: primary subject in upper two-thirds, lower third uncluttered
 ```
 
@@ -260,17 +277,19 @@ Without it Flux centres the subject and the scrim covers the thing worth seeing.
 ### Character budget
 
 2048 characters is a hard endpoint limit, so every part is capped and the total
-is checked at assembly:
+is checked at assembly. Rule 19 additionally requires the scene to be **at least
+40%** of the assembled prompt — see § Prompt budget below for why.
 
 | Part | Cap | Notes |
 |---|---|---|
-| `styleBible` | 600 | Frozen forever — it must fit forever |
-| entity descriptions | 3 × 180 = 540 | `entityRefs` is capped at 3 per page |
+| `imagePrompt` | 650 | The per-page scene, and the only varying part |
 | shot type | 24 | Enum, bounded by construction |
-| `imagePrompt` | 520 | The per-page scene |
+| entity descriptions | 2 × 110 = 220 | `entityRefs` is capped at 2 per page |
+| visual laws | 3 × 70 = 210 | |
+| `styleBible` | 320 | Frozen forever — it must fit forever |
 | composition clause | 86 | Fixed string |
 | separators | ~12 | |
-| **worst case** | **1782** | ~260 characters of headroom |
+| **worst case** | **1518** | ~530 characters of headroom |
 
 **Truncation order** when a prompt still exceeds 2048 — deterministic, applied
 in this sequence until it fits:
@@ -330,8 +349,22 @@ Applied to every normalised `ChapterResponse` before persistence.
     ≤40 words in the contradictory case. Chapter 1 always coerces to
     `additive` — there is nothing yet to contradict.
 13. Length caps that keep assembly inside 2048 characters: every `imagePrompt`
-    ≤520, every `namedEntities[].visualDescription` ≤180, every `Effect.text`
+    ≤650, every `namedEntities[].visualDescription` ≤110, every `Effect.text`
     ≤25 words.
+14. Every `visualLaw` ≤70 characters and not phrased as an absence.
+15. The arc tiles pages 1–12 contiguously, 2–5 movements, label ≤6 words.
+16. Pages are selected from the chain, not printed off it — see § below.
+17. No named entity on more than 5 of 12 pages; ≥3 pages reference none.
+18. Voice — see § Voice below.
+19. **The scene dominates the assembled image prompt.** `page.imagePrompt`'s
+    share of the assembled prompt must be ≥40%. Checked on the assembled
+    prompt, not the raw field, because that is what the illustrator sees.
+20. **The through-line actually recurs.** `throughLine.headNoun` must appear
+    (case-insensitive, whole word) in at least 7 of 12 pages' text.
+21. **No habitual register in page text.** "Launches nine times a day",
+    "usually checks the line", "these days", "increasingly" — describing how
+    things generally are, rather than the one occasion it happened.
+22. **No gazetteer rhythm.** At most 4 of 12 pages may open with `The [Name]…`.
 
 ## Storage
 
@@ -344,7 +377,7 @@ decode slower.
 
 // chapters
 { id, worldId, number, rule, mode, ruleType, transitionNote,
-  diagramHints, arc, chain, pages, status,
+  diagramHints, throughLine, arc, chain, pages, status,
   haltedAt, haltMessage,   // set on a quota halt, so resume can tell
                            // whether the UTC day has turned
   priorCanon }             // snapshot of the canon this chapter branched
@@ -426,7 +459,44 @@ Beyond what is counted, the prompt bans abstract nouns doing the work — no
 "economic pressure", "the authorities", "the system", but the queue outside the
 door, the padlock, the price chalked on a board — and asks the page to have a
 feeling about itself, funny or sad or startling, because neutral across all
-twelve is its own monotony.
+twelve is its own monotony. Contractions and sentence fragments are explicitly
+invited: the target is somebody talking, not somebody writing carefully.
+
+Two more symptoms, added when plain-but-technically-correct prose still read as
+an exhibit catalogue rather than a book:
+
+- **Rule 21, the habitual register.** "Launches nine times a day", "keeps
+  eleven beds and is rarely full" — grammatically plain, but describing a
+  *pattern* rather than an *occasion*. `HABITUAL_PATTERN` flags frequency and
+  generalisation words (`usually`, `these days`, `increasingly`, `N times a
+  day/week/year`, …). Present tense stays allowed; the enemy is habituality,
+  not tense — "the streetlights still come on at dusk, for nobody" is present
+  tense and fine. The fix is always the same: pick the one occasion and narrate
+  that.
+- **Rule 22, the gazetteer rhythm.** "The Spindle rises...", "Halfweight Port
+  launches...", "The Vertigo Ward keeps..." — every page opening on the
+  landmark's name is an exhibit-caption shape. At most 4 of 12 pages may open
+  with `The [Name] …`; the rest open on a person, an action, or a detail, and
+  let the place reveal itself in the sentence after.
+
+### Through-line
+
+Rule 20. Twelve independently-derived facts, however well each one is written,
+read as a slide deck rather than a book — nothing carries from page 3 to page
+4. `throughLine` is the fix: one unnamed role or small group (`the rope crew`,
+`the night shift`) chosen before the pages are written, that a reader can
+follow across the twelve. Same face/name invariant as `namedEntities`: a role,
+never a name, never a described face.
+
+`throughLine.headNoun` — one word from `role`, used consistently on the page —
+must appear in at least 7 of 12 pages' text. This is checked mechanically
+rather than judged, which is deliberate: a through-line that is declared in the
+JSON but never actually shows up on the page is worse than useless, because it
+looks like the problem was solved.
+
+The role does not have to be the chain's subject — the chain can stay about the
+world at large — but it is who the reader watches the world happen to and
+through.
 
 ### Pages are selected from the chain, not printed off it
 
@@ -454,11 +524,20 @@ book set in one building.
 ### Prompt budget: the scene must dominate
 
 Every plate in a chapter shares the same styleBible and visual laws, so the
-scene is the only thing making one page look different from the next. When the
-shared prefix was ~80% of the prompt, every image looked alike. `imagePrompt` is
-capped at 650 (was 520) and the prompt asks for 390+; `entityRefsPerPage` is 2
-(was 3). Measured on live output, the scene went from ~20% to ~36% of the
-assembled prompt.
+scene is the only thing making one page look different from the next. Measured
+on the fixture, the shared prefix — styleBible, laws, entity descriptions — was
+~82% of the assembled prompt, so every plate looked alike regardless of how
+varied the scenes underneath it were.
+
+The fix has three parts, all load-bearing:
+
+1. **Scene leads.** Assembly order is `imagePrompt` first, `styleBible` last —
+   diffusion models weight leading tokens heaviest.
+2. **The shared prefix shrank.** `styleBible` 600→320, `visualLaw` 100→70,
+   `entityDescription` 180→110 (`PROMPT_LIMITS` in `lib/types.ts`).
+3. **Rule 19 enforces it.** The scene must be ≥40% of the assembled prompt, not
+   merely encouraged to be. Measured on the rewritten fixture: scene share went
+   from 18% (17% at worst) to 42% (40% at worst).
 
 ### Pre-flight modes
 
@@ -522,10 +601,11 @@ parameter — the input surface is `prompt` and `steps` — so "no men anywhere"
 merely puts *men* in front of the model. `lib/validate.ts` rule 14 rejects
 negations outright.
 
-Assembly splices them **once**, immediately after the styleBible where weighting
-is heaviest. They were spliced twice while fidelity was unproven; with fidelity
-holding, the second copy was spending ~230 characters the scene needed more.
-They are never dropped to save characters — they are the mechanism.
+Assembly splices them **once**, between the entity descriptions and the
+styleBible — see § Image prompt assembly. They were spliced twice while
+fidelity was unproven; with fidelity holding, the second copy was spending
+~230 characters the scene needed more. They are never dropped to save
+characters — they are the mechanism.
 
 They live in `worldCanon`, not with the frozen styleBible, so a later rule can
 put back what an earlier one took off the page. Chapter 1's styleBible must agree
@@ -551,16 +631,16 @@ replaces the canon. It is bounded by the same caps as any canon.
 
 ## Export
 
-v4 export is JSON, images excluded, so a world stays small enough to paste.
+v5 export is JSON, images excluded, so a world stays small enough to paste.
 
 ```ts
 {
-  version: 4,
+  version: 5,
   exportedAt,                    // ISO string
   world,                         // the full StoredWorld
   chapters: [{
     id, number, rule, mode, ruleType, transitionNote, status,
-    diagramHints, priorCanon, arc, chain, pages,
+    diagramHints, throughLine, priorCanon, arc, chain, pages,
     plates: [{ pageIndex, seed, promptUsed, status, neuronCost,
                failureCode, failureMessage }],
   }],
@@ -568,11 +648,12 @@ v4 export is JSON, images excluded, so a world stays small enough to paste.
 }
 ```
 
-`arc` arrived in v3 and `mode` in v4, both for the same reason: the export is
-the artefact a chapter is reviewed from, and reviewing page text without knowing
-whether it was derived from a rule or told forward from a story means reviewing
-it against the wrong brief. Older files omit both — chapters written before the
-fields existed all had an implicit `mode` of `rule`.
+`arc` arrived in v3, `mode` in v4, `throughLine` in v5, all for the same
+reason: the export is the artefact a chapter is reviewed from, and reviewing
+page text without knowing what it was derived from, told as, or meant to carry
+means reviewing it against the wrong brief. Older files omit whichever fields
+postdate them — chapters written before `mode` existed all had an implicit mode
+of `rule`; chapters written before `throughLine` existed have none.
 
 A reimported world regenerates from the same prompts but not the same images —
 see § Seeds. `failureCode` and `failureMessage` are what make a bad run

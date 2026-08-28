@@ -1,6 +1,6 @@
 /**
  * Runs a captured Gemini response through the same contract the app will:
- * parse, normalise, all fifteen rules, prompt assembly.
+ * parse, normalise, every validation rule, prompt assembly.
  *
  *   npx tsx scripts/check-live.ts path/to/response.json [chapterNumber]
  */
@@ -38,7 +38,7 @@ if (report.strippedTokens.length > 0) {
 
 const violations = validateChapter(chapter, { chapterNumber });
 if (violations.length === 0) {
-  console.log('✓ Passes all fifteen validation rules');
+  console.log('✓ Passes all validation rules');
 } else {
   console.log(`✗ ${violations.length} violation(s) — this is what the retry prompt would carry:`);
   for (const violation of violations) console.log(`   ${violation}`);

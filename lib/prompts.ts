@@ -4,6 +4,7 @@ import {
   CANON_CAPS,
   EFFECTS_PER_ORDER,
   ENTITY_PAGES_MAX,
+  GAZETTEER_OPENING_MAX,
   MOVEMENT_LABEL_MAX_WORDS,
   PAGES_FROM_ONE_EFFECT_MAX,
   PAGES_WITHOUT_ENTITIES_MIN,
@@ -15,6 +16,7 @@ import {
   PAGES_PER_CHAPTER,
   PAGE_WORDS,
   PROMPT_LIMITS,
+  THROUGH_LINE_PAGES_MIN,
   TRANSITION_NOTE_MAX_WORDS,
   WORLD_TITLE_MAX_WORDS,
   type ChapterDigest,
@@ -247,6 +249,15 @@ The arc governs the pages: they are read in order, and page 7 should feel later 
 page 3. Something must develop across the twelve. A reader should feel carried, not
 handed a list.`);
 
+  sections.push(`THEN choose the throughLine — see THE VOICE below for what this means and why.
+Return it as:
+  - role: at most 6 words, an unnamed figure or small group ("the rope crew", "the
+    night shift"). Never a name, never a face — same rule as namedEntities.
+  - headNoun: ONE word from role, lowercase, exactly as it will appear in page text
+    ("crew", "shift"). This is checked mechanically, so it must actually be the word
+    you use on the page, not a synonym for it.
+  - want: at most 15 words, what this role is trying to do or protect across the book.`);
+
   sections.push(`THEN write exactly ${PAGES_PER_CHAPTER} pages, indices 1 to
 ${PAGES_PER_CHAPTER}, following the arc you just chose.
 
@@ -286,12 +297,14 @@ failing, being fixed for the last time.`);
 
   sections.push(`THE VOICE. This is the part that keeps coming back wrong, so read it twice.
 
-Write like a person telling somebody what happened. Plain, direct, concrete. This is a
-picture book somebody reads for pleasure. It is not literature, not a news report, not a
-lecture, and not an essay about society. Somebody should read each page once, at normal
-speed, and get it — no sentence they have to go back over.
+Write like a person telling somebody what happened, out loud, casually — not like a
+person writing. This is a picture book somebody reads for pleasure. It is not
+literature, not a news report, not a lecture, and not an essay about society.
+Contractions are normal ("doesn't", "it's", "they're"). A sentence fragment is fine.
+Somebody should read each page once, at normal speed, and get it — no sentence they
+have to go back over, and nothing that sounds typed rather than said.
 
-Four hard rules. All four are checked automatically, and a chapter that breaks them is
+Six hard rules. All six are checked automatically, and a chapter that breaks them is
 rejected and rewritten:
 
   1. NO SENTENCE LONGER THAN ${LONG_SENTENCE_WORDS} WORDS, and most much shorter. One
@@ -313,6 +326,17 @@ rejected and rewritten:
      reads flat however good the words are. Put a short one in. Three words, or one. Then
      a longer one that gathers a little detail. That rhythm is what makes it sound like a
      person instead of a report.
+  5. NO HABITUAL TENSE. "Launches nine times a day", "usually checks the line",
+     "increasingly", "these days" — that is how a brochure talks, not how a person tells
+     a story. Pick the one occasion it happened and write that: not what is generally
+     true, but what somebody saw, once. "Launches nine times a day" becomes "This
+     morning it sent up its ninth rocket before lunch." The fact survives; the caption
+     tone does not.
+  6. DON'T OPEN ON THE LANDMARK. At most ${GAZETTEER_OPENING_MAX} of the twelve pages
+     may start with "The [Name] does such-and-such" ("The Spindle rises...", "Halfweight
+     Port launches..."). That sentence shape is an exhibit caption. Open on a person
+     doing something, an action already underway, or a small detail instead, and let the
+     place reveal itself in the sentence that follows.
 
 Two more, judged rather than counted, and just as important:
 
@@ -322,7 +346,18 @@ Two more, judged rather than counted, and just as important:
     board, a bus that stops coming.
   - HAVE A FEELING ABOUT IT. Neutral across all twelve pages is its own monotony. A page
     is allowed to be funny, or sad, or startling, or quietly horrible. Some of these
-    books are jokes and some are elegies. Write the one you actually have.`);
+    books are jokes and some are elegies. Write the one you actually have.
+
+THE THROUGH-LINE. Twelve unrelated facts is the single worst thing this book can be —
+worse than any one page being weak. Before writing pages, choose a throughLine: one
+unnamed role or small group that a reader can follow across the book (the rope crew,
+the night shift, the last ferryman, the family in 4B). Same invariant as everywhere
+else: a role, never a name, never a described face. At least ${THROUGH_LINE_PAGES_MIN}
+of the twelve pages must put that role in the scene, doing something — checked
+automatically against throughLine.headNoun, so use the same word for them throughout
+(if headNoun is "crew", say "crew", not "team" on one page and "workers" on another).
+The role does not have to be the SUBJECT of the chain — the chain can stay about the
+world at large — but it is who the reader watches the world happen to and through.`);
 
   sections.push(`Continuity is what makes twelve pages a book instead of twelve ${story ? 'snapshots' : 'facts'}:
 
@@ -342,9 +377,10 @@ Two more, judged rather than counted, and just as important:
   }
   - Let tension build and resolve, or fail to. Something should be at stake by the
     middle and answered, or pointedly unanswered, by the end.
-  - VARY THE LOOK. Across the twelve: different times of day, weather, seasons, and
-    scales — a horizon, a room, a pair of hands. Consecutive pages must not share a time
-    of day and a distance. At least ${PAGES_WITHOUT_ENTITIES_MIN} pages go somewhere not
+  - VARY THE LOOK. Across the twelve: different times of day, weather, seasons, palette
+    emphasis, and scales — a horizon, a room, a pair of hands. Consecutive pages must not
+    share a time of day, a dominant light or palette emphasis, or a distance. At least
+    ${PAGES_WITHOUT_ENTITIES_MIN} pages go somewhere not
     in namedEntities at all, and no entity appears on more than ${ENTITY_PAGES_MAX} pages.
     A world that is only ever its three landmarks reads as one building.
 
@@ -369,7 +405,8 @@ Each page:
     weather and quality of light, the colours and textures actually present, what is worn
     or carried, what is broken or new. Describe the SCENE ONLY. No style words of any
     kind — no "illustration", "photorealistic", "anime", "in the style of". Style is
-    applied separately and fights anything you write here.
+    applied separately and fights anything you write here. Consecutive pages must not
+    share a dominant light or palette emphasis either — see VARY THE LOOK below.
   - entityRefs: at most ${PROMPT_LIMITS.entityRefsPerPage} names from
     worldCanon.namedEntities that appear in this scene. Their descriptions are spliced in
     automatically, so do not repeat their appearance in the imagePrompt. Most pages

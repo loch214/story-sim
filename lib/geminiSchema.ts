@@ -93,6 +93,11 @@ export function chapterSchemaFor(chapterNumber: number) {
         properties: { palette: { type: 'ARRAY', items: STRING }, motif: STRING },
         required: ['palette', 'motif'],
       },
+      throughLine: {
+        type: 'OBJECT',
+        properties: { role: STRING, headNoun: STRING, want: STRING },
+        required: ['role', 'headNoun', 'want'],
+      },
       arc: {
         type: 'ARRAY',
         items: {
@@ -108,6 +113,7 @@ export function chapterSchemaFor(chapterNumber: number) {
     required: [
       'ruleType',
       'diagramHints',
+      'throughLine',
       'arc',
       'chain',
       'pages',

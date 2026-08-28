@@ -27,27 +27,30 @@ export const RULE_TYPES = ['additive', 'contradictory', 'ambiguous'] as const;
 
 export const PROMPT_LIMITS = {
   total: 2048,
-  styleBible: 600,
-  entityDescription: 180,
+  /**
+   * 320, not 600. The scene must dominate the prompt, not the style. At 600 the
+   * shared prefix — styleBible plus laws plus entities — measured at 82% of the
+   * average assembled prompt (check:fixture), so every plate looked alike
+   * regardless of how varied the scenes were. Cut in favour of the scene.
+   */
+  styleBible: 320,
+  entityDescription: 110,
   /**
    * Two, not three. Eleven of twelve pages once leaned on the same three
    * landmarks, which made the book feel like it was set in a single building.
    */
   entityRefsPerPage: 2,
   /**
-   * The scene should dominate the prompt, not trail it. At 520 the shared
-   * prefix — styleBible plus laws plus composition — was roughly 80% of every
-   * prompt, so every plate looked alike. Budgeted against the 2048 cap:
-   * 600 styleBible + 275 laws + 364 entities + 20 shot + 60 composition
-   * + separators leaves comfortable room for this.
+   * The scene should dominate the prompt, not trail it. Budgeted against the
+   * 2048 cap: 320 styleBible + 210 laws + 220 entities + 20 shot + 60
+   * composition + separators leaves comfortable room for this to lead.
    */
   imagePrompt: 650,
   /**
-   * 100, not 90: the model overshot 90 on both live chapters measured (91 and
-   * 94 characters), each time spending the chapter's one retry on a few
-   * characters. The prompt budget absorbs the extra 30 comfortably.
+   * 70, not 100. Shrunk alongside styleBible so the shared prefix stays a
+   * minority of the prompt; three laws at 70 is 210, well under the scene.
    */
-  visualLaw: 100,
+  visualLaw: 70,
   /** How many laws ride on one prompt. Matches the canon cap; both ends stay in step. */
   visualLawsPerPrompt: 3,
 } as const;
@@ -166,6 +169,27 @@ export const STIFF_REGISTER_PATTERN = new RegExp(
 );
 
 /**
+ * The habitual register — "how things generally are" rather than "what
+ * happened, once, to somebody" — is what makes a page read as an infographic
+ * caption regardless of how plain its words are. Present tense stays allowed;
+ * the enemy is frequency and generalisation, not tense. See rule 21.
+ */
+export const HABITUAL_PATTERN =
+  /\b(?:increasingly|these days|nowadays|tends? to|usually|generally|typically|often|rarely|most people|many people|every (?:year|day|week)|each (?:year|day|week)|once a (?:day|week|month|year)|\d+ times a (?:day|week|month|year))\b/i;
+
+/** How many of the twelve pages must carry the through-line's headNoun. See rule 20. */
+export const THROUGH_LINE_PAGES_MIN = 7;
+
+/**
+ * At most this many pages may open on a definite-article proper noun or a bare
+ * named-entity — "The Spindle rises…", "Halfweight Port launches…" — the
+ * gazetteer rhythm that reads as an exhibit caption rather than a scene. See
+ * rule 22.
+ */
+export const GAZETTEER_OPENING_MAX = 4;
+export const GAZETTEER_OPENING_PATTERN = /^The [A-Z]/;
+
+/**
  * A page sentence longer than this is where the prose stops sounding like
  * someone telling you what happened and starts sounding like a novel: clause
  * after clause, gathering detail no reader asked for. Calibrated against the
@@ -270,12 +294,25 @@ export const diagramHintsSchema = z.object({
   motif: z.string().min(1),
 });
 
+/**
+ * The thread that carries a reader from page 1 to page 12. `role` is an
+ * unnamed figure or group — never a name, never a face, same invariant as
+ * `namedEntities` — and `headNoun` is one word from it so rule 20 can check
+ * recurrence in page text without the model self-reporting where it appears.
+ */
+export const throughLineSchema = z.object({
+  role: z.string().min(1),
+  headNoun: z.string().min(1),
+  want: z.string().min(1),
+});
+
 export const chapterResponseSchema = z.object({
   ruleType: z.enum(RULE_TYPES),
   transitionNote: z.string().optional(),
   worldTitle: z.string().optional(),
   styleBible: z.string().optional(),
   diagramHints: diagramHintsSchema,
+  throughLine: throughLineSchema,
   arc: z.array(movementSchema).min(1),
   chain: z.array(effectSchema).min(1),
   pages: z.array(pageSchema),
@@ -325,6 +362,7 @@ export type Page = z.infer<typeof pageSchema>;
 export type NamedEntity = z.infer<typeof namedEntitySchema>;
 export type WorldCanon = z.infer<typeof worldCanonSchema>;
 export type DiagramHints = z.infer<typeof diagramHintsSchema>;
+export type ThroughLine = z.infer<typeof throughLineSchema>;
 export type ChapterResponse = z.infer<typeof chapterResponseSchema>;
 export type ChapterDigest = z.infer<typeof chapterDigestSchema>;
 export type PreflightResult = z.infer<typeof preflightSchema>;
@@ -372,6 +410,11 @@ export interface StoredChapter {
   ruleType: CoercedRuleType;
   transitionNote?: string;
   diagramHints: DiagramHints;
+  /**
+   * The thread carrying a reader from page 1 to page 12. Absent on chapters
+   * stored before this field existed.
+   */
+  throughLine?: ThroughLine;
   /** The pacing this chapter chose. Shown as the reader moves through the book. */
   arc: Movement[];
   chain: Effect[];

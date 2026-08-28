@@ -1,9 +1,13 @@
+import { assembleImagePrompt } from './prompt';
 import {
   ARC_MOVEMENTS,
   CANON_CAPS,
   EFFECTS_PER_ORDER,
   EFFECT_MAX_WORDS,
   ENTITY_PAGES_MAX,
+  GAZETTEER_OPENING_MAX,
+  GAZETTEER_OPENING_PATTERN,
+  HABITUAL_PATTERN,
   MOVEMENT_LABEL_MAX_WORDS,
   PAGES_FROM_ONE_EFFECT_MAX,
   PAGES_WITHOUT_ENTITIES_MIN,
@@ -20,6 +24,7 @@ import {
   PAGES_PER_CHAPTER,
   PAGE_WORDS,
   PROMPT_LIMITS,
+  THROUGH_LINE_PAGES_MIN,
   TRANSITION_NOTE_MAX_WORDS,
   WORLD_TITLE_MAX_WORDS,
   coerceRuleType,
@@ -29,6 +34,18 @@ import {
   type Effect,
   type WorldCanon,
 } from './types';
+
+/**
+ * The scene's minimum share of the assembled image prompt. See rule 19.
+ * Budgeted in lib/types.ts PROMPT_LIMITS to land comfortably above this once
+ * styleBible and laws are filled to their caps.
+ */
+const SCENE_SHARE_MIN = 0.4;
+
+/** headNoun is model-authored text spliced into a RegExp; escape it first. */
+function escapeRegExp(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
 
 export interface ValidateOptions {
   chapterNumber: number;
@@ -42,16 +59,22 @@ export interface ValidateOptions {
    * policy. See lib/prompts.ts.
    */
   mode?: ChapterMode;
+  /**
+   * The world's frozen styleBible — `chapter.styleBible` for chapter 1,
+   * the stored world's for chapter 2+ (it is not part of `WorldCanon`). Used
+   * only by rule 19, to assemble the same prompt the illustrator will see.
+   */
+  worldStyleBible?: string;
 }
 
 /**
- * The fifteen rules of docs/SCHEMA.md § Validation, run to completion rather
- * than short-circuiting: the caller appends the whole list to the retry prompt,
- * so a partial list wastes the one retry we allow.
+ * The rules of docs/SCHEMA.md § Validation, run to completion rather than
+ * short-circuiting: the caller appends the whole list to the retry prompt, so
+ * a partial list wastes the one retry we allow.
  */
 export function validateChapter(
   chapter: ChapterResponse,
-  { chapterNumber, priorCanon, mode = 'rule' }: ValidateOptions,
+  { chapterNumber, priorCanon, mode = 'rule', worldStyleBible }: ValidateOptions,
 ): string[] {
   const v: string[] = [];
   const byId = new Map<string, Effect>(chapter.chain.map((e) => [e.id, e]));
@@ -161,7 +184,7 @@ export function validateChapter(
     if (!chapter.styleBible) {
       v.push('Rule 11: chapter 1 must return a styleBible.');
     } else if (chapter.styleBible.length > PROMPT_LIMITS.styleBible) {
-      v.push(`Rule 11: styleBible is ${chapter.styleBible.length} characters, cap is ${PROMPT_LIMITS.styleBible}. It is prepended to every image prompt forever, so it must fit forever.`);
+      v.push(`Rule 11: styleBible is ${chapter.styleBible.length} characters, cap is ${PROMPT_LIMITS.styleBible}. It rides in every image prompt forever, so it must fit forever.`);
     }
     if (chapter.worldTitle && wordCount(chapter.worldTitle) > WORLD_TITLE_MAX_WORDS) {
       v.push(`Rule 11: worldTitle is ${wordCount(chapter.worldTitle)} words, cap is ${WORLD_TITLE_MAX_WORDS}.`);
@@ -227,11 +250,47 @@ export function validateChapter(
           'Keep the technical register in the chain, where it belongs.',
       );
     }
+    // 21. The habitual register — "how things generally are" rather than "what
+    // happened, once" — is the precise cause of the infographic-caption feel:
+    // present tense is fine, generalising is not.
+    const habitual = HABITUAL_PATTERN.exec(page.text);
+    if (habitual) {
+      v.push(
+        `Rule 21: page ${page.index} says how things generally are ("${habitual[0]}"). ` +
+          'Write the one occasion when it happened to somebody, not the pattern it fits.',
+      );
+    }
   }
   if (pagesWithShortSentence < PAGES_WITH_SHORT_SENTENCE_MIN) {
     v.push(
       `Rule 18: only ${pagesWithShortSentence} of ${PAGES_PER_CHAPTER} pages contain a sentence of ${SHORT_SENTENCE_WORDS} words or fewer, ` +
         `need at least ${PAGES_WITH_SHORT_SENTENCE_MIN}. Every sentence is landing at the same medium length, which is what makes the prose read flat. Vary it.`,
+    );
+  }
+
+  // 20. The through-line has to actually recur, or it is a field nobody reads
+  // rather than a thread carrying the book. headNoun is one word from the role
+  // precisely so this is checkable without the model self-reporting.
+  const headNoun = chapter.throughLine.headNoun.trim();
+  if (headNoun) {
+    const headNounPattern = new RegExp(`\\b${escapeRegExp(headNoun)}\\b`, 'i');
+    const carryingPages = chapter.pages.filter((page) => headNounPattern.test(page.text)).length;
+    if (carryingPages < THROUGH_LINE_PAGES_MIN) {
+      v.push(
+        `Rule 20: throughLine.headNoun "${headNoun}" appears on ${carryingPages} of ${PAGES_PER_CHAPTER} pages, ` +
+          `need at least ${THROUGH_LINE_PAGES_MIN}. The through-line has to actually carry the book from page to page, not just describe it in the field.`,
+      );
+    }
+  }
+
+  // 22. Every page opening on "The Spindle rises…" is the gazetteer rhythm —
+  // an exhibit caption, not a moment. Most pages should open somewhere else:
+  // mid-action, on a person, on a detail.
+  const gazetteerOpenings = chapter.pages.filter((page) => GAZETTEER_OPENING_PATTERN.test(page.text.trim())).length;
+  if (gazetteerOpenings > GAZETTEER_OPENING_MAX) {
+    v.push(
+      `Rule 22: ${gazetteerOpenings} of ${PAGES_PER_CHAPTER} pages open on "The [Name]…", cap is ${GAZETTEER_OPENING_MAX}. ` +
+        'That is a caption to an exhibit, not a moment. Open most pages on an action, a person, or a detail instead.',
     );
   }
 
@@ -340,6 +399,32 @@ export function validateChapter(
   for (const effect of chapter.chain) {
     if (wordCount(effect.text) > EFFECT_MAX_WORDS) {
       v.push(`Rule 13: effect ${effect.id} is ${wordCount(effect.text)} words, cap is ${EFFECT_MAX_WORDS}.`);
+    }
+  }
+
+  // 19. The scene must dominate the assembled image prompt. Every plate in a
+  // chapter shares the styleBible and the laws verbatim, so whatever the scene
+  // is short of, the shared prefix eats — and when that prefix led the prompt,
+  // every plate looked the same regardless of how varied the scenes were.
+  // Checked on the assembled prompt, not the raw imagePrompt field, because
+  // that is what the illustrator actually sees.
+  const sceneShareStyleBible = chapter.styleBible ?? worldStyleBible;
+  if (sceneShareStyleBible !== undefined) {
+    const styleBible = sceneShareStyleBible;
+    for (const page of chapter.pages) {
+      const entities = page.entityRefs
+        .slice(0, PROMPT_LIMITS.entityRefsPerPage)
+        .map((name) => chapter.worldCanon.namedEntities.find((e) => e.name === name))
+        .filter((e): e is (typeof chapter.worldCanon.namedEntities)[number] => e !== undefined);
+      const assembled = assembleImagePrompt(styleBible, page, entities, chapter.worldCanon.visualLaws);
+      const share = page.imagePrompt.length / assembled.prompt.length;
+      if (share < SCENE_SHARE_MIN) {
+        v.push(
+          `Rule 19: page ${page.index}'s scene is ${Math.round(share * 100)}% of its assembled image ` +
+            `prompt, need at least ${Math.round(SCENE_SHARE_MIN * 100)}%. The styleBible and visual laws ` +
+            'are identical on every plate — write more of the scene itself, or the plates will look alike.',
+        );
+      }
     }
   }
 

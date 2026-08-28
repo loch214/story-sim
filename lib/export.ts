@@ -22,8 +22,12 @@ import type { StoredWorld } from './types';
  * from a story, and the two are written by different halves of the prompt and
  * judged by slightly different rules. Reviewing page text without knowing which
  * one produced it means reviewing against the wrong brief.
+ *
+ * v5 adds `throughLine`. It is the thread rule 20 checks page text against —
+ * reviewing whether a chapter reads as one story means seeing what that
+ * thread was supposed to be.
  */
-export const EXPORT_VERSION = 4;
+export const EXPORT_VERSION = 5;
 
 export interface WorldExport {
   version: number;
@@ -39,6 +43,8 @@ export interface WorldExport {
     transitionNote?: string;
     status: string;
     diagramHints: unknown;
+    /** The thread rule 20 checks page text against. Omitted before v5. */
+    throughLine?: unknown;
     priorCanon?: unknown;
     /** The pacing the chapter chose. Omitted before v3 — worlds made then have none. */
     arc?: unknown;
@@ -79,6 +85,7 @@ export async function buildWorldExport(world: StoredWorld): Promise<WorldExport>
       transitionNote: chapter.transitionNote,
       status: chapter.status,
       diagramHints: chapter.diagramHints,
+      throughLine: chapter.throughLine,
       priorCanon: chapter.priorCanon,
       arc: chapter.arc,
       chain: chapter.chain,

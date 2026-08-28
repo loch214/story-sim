@@ -198,6 +198,56 @@ flourish. The fixture chapter was rewritten to meet the new rules; seven of its
 twelve pages failed them, which is the measure of how far the register had
 drifted.
 
+### 9. Distinct plates, and a book instead of a deck
+
+Two complaints prompted this: the plates all look similar regardless of the
+story, and the pages still read as an infographic rather than a story. Both had
+measurable causes.
+
+**Options considered and ruled out, for image generation.** A Google-login-based
+route to Nano Banana was proposed to spread cost across users and get a better
+model. Neither survived research: every Gemini image model's pricing page reads
+`Free tier: Not available` — the free consumer-app allowance is a different
+surface from the API — and there is no OAuth scope that lets an app spend a
+signed-in user's consumer quota; it is an open feature request on Google's own
+developer forum, not a capability. Upgrading the Cloudflare model
+(`flux-2-klein`, `lucid-origin`) was also priced out: 8–20× Flux Schnell's cost,
+dropping the app under one chapter a day. If multi-user scaling ever matters,
+the answer is bring-your-own-**Cloudflare**-token (also free, no card) — not
+attempted here, just the identified path.
+
+**The plates looked alike because the prompt did, not because of the model.**
+`npm run check:fixture` already measured it: the scene was 18% of the average
+assembled image prompt, 17% at worst. The other ~82% — styleBible, visual laws,
+entity descriptions — is byte-identical across all twelve plates and sat at the
+*front*, where diffusion models weight tokens heaviest. Fixed three ways: the
+scene now leads the assembled prompt (`lib/prompt.ts`), the shared caps shrank
+(`PROMPT_LIMITS` in `lib/types.ts`: styleBible 600→320, visualLaw 100→70,
+entityDescription 180→110), and a new rule 19 rejects any plate whose scene
+falls under 40% of the assembled prompt. Measured on the rewritten fixture:
+scene share moved to 42% average, 40% at worst.
+
+**The infographic feel survived plain vocabulary.** Rule 18 already bans long
+sentences, semicolons and stiff words, and it works — but nothing stopped a
+page from being grammatically plain while still reading as an exhibit caption:
+habitual-tense summary ("launches nine times a day", "keeps eleven beds and is
+rarely full") and every page opening on the landmark's name ("The Spindle
+rises...", "Halfweight Port launches..."). Two new checked rules: 21 rejects the
+habitual register (present tense stays fine; generalising does not), 22 caps
+gazetteer-style openings at 4 of 12 pages. A third gap was structural rather
+than lexical — nothing carried a reader from page 3 to page 4. `throughLine` is
+new on the contract: one unnamed role a chapter chooses before writing pages,
+whose `headNoun` rule 20 requires on at least 7 of 12 pages, checked
+mechanically so a declared-but-absent thread cannot pass as solved.
+
+The fixture chapter was rewritten against all of this — richer, longer scenes
+(390→480+ characters typical), a through-line (`the rope crew`), habitual
+phrasing rewritten to specific occasions, gazetteer openings reduced to within
+the cap. `check:fixture` passes on the rewrite; it did not on the first attempt,
+which is the measure of how far both problems had drifted. Not yet run live:
+next verification is one real chapter, checked against rules 19–22 on the first
+attempt and read cold from the export to judge whether it reads as one story.
+
 ### 1. Schema and validator
 Types and Zod validators from [docs/SCHEMA.md](docs/SCHEMA.md). A checked-in
 fixture chapter in `fixtures/` that passes every rule, plus deliberately broken
