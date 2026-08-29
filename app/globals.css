@@ -186,6 +186,40 @@ html {
   color: var(--dim);
 }
 
+/* A footnote on a leaf. `.mono` is the taxonomy face — 11px, all caps, widely
+   tracked — and it is right for a one-word label and wrong for a sentence: a
+   paragraph set in it is a wall of capitals nobody reads, which is what the
+   small print on every leaf had become. Same face and same quiet voice, at a
+   size and case meant to be read. */
+.note {
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 0.8125rem;
+  line-height: 1.75;
+  letter-spacing: 0.005em;
+  color: var(--dimmer);
+}
+
+/* The twelve-plate strip. When the book is bound the grid sizes off the leaf's
+   height, so six squares by two always fit the sheet however tall it is;
+   anywhere else it is an ordinary grid that flows down the page. Keyed to the
+   same query as ROOMY in Book.tsx, because a width-only breakpoint would apply
+   the height-driven sizing on a short wide window that is showing the flat
+   fallback and has no definite height to size against. */
+@media (min-width: 900px) and (min-height: 620px) {
+  .plate-strip {
+    height: 100%;
+    width: auto;
+    margin-inline: auto;
+    aspect-ratio: 3 / 1;
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    grid-template-rows: repeat(2, minmax(0, 1fr));
+  }
+
+  .plate-strip > li {
+    aspect-ratio: auto;
+  }
+}
+
 .leaf-title {
   font-family: var(--font-display), Georgia, serif;
   font-optical-sizing: auto;

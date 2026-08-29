@@ -5,8 +5,22 @@ import { PLATES } from './plates';
 
 /* ── shared parts, all in the app's own vocabulary ──────────────────────── */
 
+/**
+ * The margin of a leaf. Horizontal padding is a percentage of the leaf, which
+ * is what percentages mean; vertical padding is not, because a CSS percentage
+ * padding resolves against the *inline* size on all four sides. On a leaf
+ * 1180px wide that made `py-[6.5%]` 77px of margin above and below, ate a
+ * quarter of the sheet's height, and pushed the last paragraph of the shorter
+ * leaves straight off the bottom edge, where `overflow-hidden` clipped it
+ * mid-sentence. Vertical margin is stated in vh so it tracks the thing it is
+ * actually a margin of.
+ */
 function Sheet({ children, className = '' }: { children: React.ReactNode; className?: string }) {
-  return <div className={`flex h-full flex-col px-[7.5%] py-[6.5%] ${className}`}>{children}</div>;
+  return (
+    <div className={`flex h-full flex-col px-[6.5%] py-[clamp(1.6rem,4.2vh,2.75rem)] ${className}`}>
+      {children}
+    </div>
+  );
 }
 
 function Head({ children }: { children: React.ReactNode }) {
@@ -46,10 +60,9 @@ function ReadFixture() {
 /** Says out loud what the artwork is. Nothing here pretends to be model output. */
 function Provenance({ className = '' }: { className?: string }) {
   return (
-    <p className={`mono leading-[1.7] text-[var(--dimmer)] ${className}`}>
-      plates on this page are drawn to the chapter’s style bible, not generated from it.
-      <br />
-      the page text is verbatim from the checked-in fixture chapter.
+    <p className={`note max-w-[46ch] ${className}`}>
+      plates on this page are drawn to the chapter’s style bible, not generated from it. the page
+      text is verbatim from the checked-in fixture chapter.
     </p>
   );
 }
@@ -57,7 +70,7 @@ function Provenance({ className = '' }: { className?: string }) {
 /** The vellum reverse of a sheet. Read only while the leaf is edge-on. */
 function Back({ note, cite }: { note: string; cite: string }) {
   return (
-    <div className="flex h-full flex-col justify-between px-[7.5%] py-[6.5%] text-[var(--vellum-ink)]">
+    <div className="flex h-full flex-col justify-between px-[6.5%] py-[clamp(1.6rem,4.2vh,2.75rem)] text-[var(--vellum-ink)]">
       <p className="mono text-[#6c6355]">{cite}</p>
       <p className="max-w-[30ch] self-end text-right text-[1.5rem] italic leading-[1.35] text-[#3a352b]">
         {note}
@@ -73,39 +86,51 @@ function Back({ note, cite }: { note: string; cite: string }) {
 
 /* ── 1 · the cover ──────────────────────────────────────────────────────── */
 
+/**
+ * The cover reads across the leaf, not down it. The plate is a true square —
+ * the same physical object the reader reads, not a wide crop of one — so on a
+ * leaf this much wider than it is tall, stacking title over plate leaves the
+ * whole right half of the sheet as empty paper and shrinks the artwork to a
+ * postage stamp in the middle of it. Set beside the title instead, the square
+ * runs the full height of the sheet and the words get the width they want.
+ */
 function Cover() {
   const plate = PLATES[0];
   return (
-    <div className="flex h-full flex-col">
-      <header className="px-[7.5%] pb-[2.5%] pt-[4.5%]">
-        <h1 className="leaf-title text-[clamp(2.4rem,4.6vw,4.4rem)]">Story‑sim</h1>
-        <p className="mt-3 max-w-[42ch] text-[clamp(1rem,1.15vw,1.2rem)] leading-[1.5] text-[var(--dim)]">
+    <div className="grid h-full grid-cols-[minmax(0,1fr)] items-center gap-[clamp(1.5rem,3vw,3rem)] px-[6.5%] py-[clamp(1.6rem,4.2vh,2.75rem)] lg:grid-cols-[minmax(0,1fr)_auto]">
+      <div>
+        <h1 className="leaf-title text-[clamp(2.6rem,5.4vw,4.8rem)]">Story‑sim</h1>
+        <p className="mt-4 max-w-[26ch] text-[clamp(1.15rem,1.5vw,1.6rem)] leading-[1.35] text-[var(--text)]">
           Change one rule of reality. Read the world that results.
         </p>
-      </header>
 
-      {/* The plate is a true square, the same physical object the reader reads —
-          not a wide crop of one. A book leaf is portrait-ish, so the plate is
-          sized to the leaf's width and simply runs as tall as that makes it;
-          the quiet margin above and below is the leaf's own paper, not empty
-          canvas standing in for content. */}
-      <div className="min-h-0 flex-1 px-[7.5%] pb-[4.5%]">
-        <figure className="relative mx-auto h-full max-w-full overflow-hidden border border-[#2a373c]" style={{ aspectRatio: '1 / 1' }}>
-          <plate.Scene />
-          <figcaption className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-[#080c0dfa] via-[#080c0de6] via-40% to-transparent px-[6%] pb-5 pt-16">
-            <p className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
-              <span className="mono text-[var(--lf-ochre)]">rule</span>
-              <span className="text-[clamp(0.95rem,1.1vw,1.2rem)] text-[#f3f0ea]">gravity is half as strong</span>
-              <span aria-hidden className="mono text-[var(--dimmer)]">→</span>
-              <span className="display text-[clamp(1rem,1.2vw,1.3rem)] text-[#f3f0ea]">The Long Fall</span>
-            </p>
-            <div className="mt-4 flex flex-wrap items-center gap-x-7 gap-y-3">
-              <Open />
-              <ReadFixture />
-            </div>
-          </figcaption>
-        </figure>
+        <p className="mt-7 flex flex-wrap items-baseline gap-x-3 gap-y-1 border-t border-[#26343a] pt-5">
+          <span className="mono text-[var(--lf-ochre)]">rule</span>
+          <span className="text-[clamp(1rem,1.15vw,1.25rem)] text-[#f3f0ea]">
+            gravity is half as strong
+          </span>
+          <span aria-hidden className="mono text-[var(--dimmer)]">
+            →
+          </span>
+          <span className="display text-[clamp(1.05rem,1.25vw,1.35rem)] text-[#f3f0ea]">
+            The Long Fall
+          </span>
+        </p>
+
+        <div className="mt-7 flex flex-wrap items-center gap-x-7 gap-y-3">
+          <Open />
+          <ReadFixture />
+        </div>
       </div>
+
+      {/* `h-full` plus `aspect-square` in an `auto` track: the square is as wide
+          as the sheet is tall, and the words take whatever is left. */}
+      <figure className="relative w-full overflow-hidden border border-[#2a373c] lg:h-full lg:w-auto" style={{ aspectRatio: '1 / 1' }}>
+        <plate.Scene />
+        <figcaption className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-[#080c0df2] to-transparent px-4 pb-3 pt-12">
+          <span className="mono text-[#c8cfd1]">plate 01 · the long fall</span>
+        </figcaption>
+      </figure>
     </div>
   );
 }
@@ -130,12 +155,12 @@ function TheRule() {
         before it spends anything.
       </Body>
 
-      <div className="mt-auto pt-8">
+      <div className="mt-auto pt-6">
         <ul className="border-t border-[#26343a]">
           {PREMISES.map((premise, i) => (
             <li
               key={premise.text}
-              className="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-1 border-b border-[#26343a] py-4"
+              className="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-1 border-b border-[#26343a] py-[clamp(0.55rem,1.4vh,0.95rem)]"
             >
               <span
                 className={`text-[clamp(1.05rem,1.5vw,1.55rem)] leading-tight ${
@@ -151,7 +176,7 @@ function TheRule() {
             </li>
           ))}
         </ul>
-        <p className="mono mt-5 max-w-[52ch] leading-[1.8] text-[var(--dimmer)]">
+        <p className="note mt-4 max-w-[104ch]">
           pre‑flight restates what it thinks you meant. confirming that restatement is the only
           confirmation there is — it writes the chapter and draws the plates in one action.
         </p>
@@ -172,50 +197,64 @@ interface ChainNode {
   from?: string[];
 }
 
-const NODES: ChainNode[] = [
-  { id: 'e1', domain: 'environment', x: 262, y: 18, plate: '01', lines: ['Dust and pollen no', 'longer settle. A', 'permanent pale haze.'] },
-  { id: 'e2', domain: 'science', x: 262, y: 176, plate: '04', lines: ['Escape velocity halves.', 'Orbit becomes an', 'ordinary freight problem.'] },
-  { id: 'e4', domain: 'technology', x: 262, y: 334, plate: '03', lines: ['Structures carry their', 'own weight further.', 'Buildings grow thinner.'] },
-  { id: 'e7', domain: 'environment', x: 578, y: 18, plate: '10', from: ['e1'], lines: ['The haze cools the', 'surface by a degree.', 'Seasons shift poleward.'] },
-  { id: 'e5', domain: 'economy', x: 578, y: 176, plate: '06', from: ['e2'], lines: ['Orbital freight undercuts', 'shipping. Deepwater ports', 'lose their traffic.'] },
-  { id: 'e8', domain: 'politics', x: 578, y: 334, plate: '07', from: ['e4'], lines: ['Building codes invert.', 'Ground‑level footprint', 'becomes the scarce thing.'] },
-  { id: 'e12', domain: 'economy', x: 894, y: 18, plate: '11', from: ['e7'], lines: ['Agriculture migrates', 'poleward; grain moves', 'by low sky‑barge.'] },
-  { id: 'e9', domain: 'conflict', x: 894, y: 176, plate: '12', from: ['e5'], lines: ['Launch corridors become', 'chokepoints. Fleets sit', 'around empty fields.'] },
-  { id: 'e10', domain: 'politics', x: 894, y: 334, plate: '08', from: ['e8'], lines: ['Ground becomes the', 'elite address. Walled', 'gardens at street level.'] },
-];
+/* Column x, row y. An SVG has no font-size floor: whatever is drawn here is
+   multiplied by however much the art has to shrink to fit its box, and the box
+   on a leaf is about 1000px wide. Every size below is chosen so that after that
+   division — roughly 0.73 — the smallest label still lands above 11px on screen.
+   The first version was drawn at 12–16 and rendered at 5–7, which is why the
+   diagram read as texture rather than as text. */
+const COL = [300, 672, 1044];
+const ROW = [4, 156, 308];
 
-const NODE_W = 232;
-const NODE_H = 122;
+const NODE_W = 300;
+const NODE_H = 136;
+
+const CHAIN_W = 1370;
+const CHAIN_H = 468;
+
+/** The rule block, vertically centred on the middle row so the fan is symmetric. */
+const RULE_X = 16;
+const RULE_W = 240;
+const RULE_Y = ROW[1];
+const RULE_MID = RULE_Y + NODE_H / 2;
+
+const NODES: ChainNode[] = [
+  { id: 'e1', domain: 'environment', x: COL[0], y: ROW[0], plate: '01', lines: ['Dust and pollen no', 'longer settle. A', 'permanent pale haze.'] },
+  { id: 'e2', domain: 'science', x: COL[0], y: ROW[1], plate: '04', lines: ['Escape velocity halves.', 'Orbit becomes an', 'ordinary freight problem.'] },
+  { id: 'e4', domain: 'technology', x: COL[0], y: ROW[2], plate: '03', lines: ['Structures carry their', 'own weight further.', 'Buildings grow thinner.'] },
+  { id: 'e7', domain: 'environment', x: COL[1], y: ROW[0], plate: '10', from: ['e1'], lines: ['The haze cools the', 'surface by a degree.', 'Seasons shift poleward.'] },
+  { id: 'e5', domain: 'economy', x: COL[1], y: ROW[1], plate: '06', from: ['e2'], lines: ['Orbital freight undercuts', 'shipping. Deepwater ports', 'lose their traffic.'] },
+  { id: 'e8', domain: 'politics', x: COL[1], y: ROW[2], plate: '07', from: ['e4'], lines: ['Building codes invert.', 'Ground‑level footprint', 'becomes the scarce thing.'] },
+  { id: 'e12', domain: 'economy', x: COL[2], y: ROW[0], plate: '11', from: ['e7'], lines: ['Agriculture migrates', 'poleward; grain moves', 'by low sky‑barge.'] },
+  { id: 'e9', domain: 'conflict', x: COL[2], y: ROW[1], plate: '12', from: ['e5'], lines: ['Launch corridors become', 'chokepoints. Fleets sit', 'around empty fields.'] },
+  { id: 'e10', domain: 'politics', x: COL[2], y: ROW[2], plate: '08', from: ['e8'], lines: ['Ground becomes the', 'elite address. Walled', 'gardens at street level.'] },
+];
 
 function ChainPlate() {
   const at = (id: string) => NODES.find((n) => n.id === id)!;
   return (
-    <svg viewBox="0 0 1160 476" className="h-full w-full" role="img" aria-label="The causal chain derived from the rule: gravity is half as strong. Three orders of consequence fan out from the rule, each node citing what caused it and the plate that dramatises it.">
-      <rect width={1160} height={476} fill="#ebe5d7" />
+    <svg viewBox={`0 0 ${CHAIN_W} ${CHAIN_H}`} className="block h-auto w-full" role="img" aria-label="The causal chain derived from the rule: gravity is half as strong. Three orders of consequence fan out from the rule, each node citing what caused it and the plate that dramatises it.">
+      <rect width={CHAIN_W} height={CHAIN_H} fill="#ebe5d7" />
 
       {/* order rails */}
-      {[
-        [262, 'order 1'],
-        [578, 'order 2'],
-        [894, 'order 3'],
-      ].map(([x, label]) => (
-        <g key={label as string}>
-          <line x1={x as number} y1={8} x2={x as number} y2={468} stroke="#c3bba6" strokeWidth={1} />
-          <text x={(x as number) + 8} y={466} fill="#8d846f" fontSize={13} letterSpacing={1.6} className="svg-mono">
-            {(label as string).toUpperCase()}
+      {COL.map((x, i) => (
+        <g key={x}>
+          <line x1={x} y1={0} x2={x} y2={CHAIN_H} stroke="#c3bba6" strokeWidth={1.5} />
+          <text x={x + 10} y={CHAIN_H - 8} fill="#8d846f" fontSize={15} letterSpacing={1.8} className="svg-mono">
+            {`ORDER ${i + 1}`}
           </text>
         </g>
       ))}
 
       {/* the rule */}
-      <rect x={18} y={176} width={200} height={NODE_H} fill="#2b2820" />
-      <text x={34} y={206} fill="#c9a227" fontSize={13} letterSpacing={1.8} className="svg-mono">
+      <rect x={RULE_X} y={RULE_Y} width={RULE_W} height={NODE_H} fill="#2b2820" />
+      <text x={RULE_X + 20} y={RULE_Y + 34} fill="#c9a227" fontSize={15} letterSpacing={2} className="svg-mono">
         RULE
       </text>
-      <text x={34} y={238} fill="#efe9db" fontSize={19} className="svg-body">
+      <text x={RULE_X + 20} y={RULE_Y + 74} fill="#efe9db" fontSize={25} className="svg-body">
         gravity is half
       </text>
-      <text x={34} y={262} fill="#efe9db" fontSize={19} className="svg-body">
+      <text x={RULE_X + 20} y={RULE_Y + 104} fill="#efe9db" fontSize={25} className="svg-body">
         as strong
       </text>
 
@@ -228,52 +267,52 @@ function ChainPlate() {
           return (
             <path
               key={`c-${node.id}`}
-              d={`M218 ${236} C 238 ${236}, 234 ${y2}, ${x2 - 2} ${y2}`}
+              d={`M${RULE_X + RULE_W} ${RULE_MID} C ${RULE_X + RULE_W + 24} ${RULE_MID}, ${x2 - 26} ${y2}, ${x2 - 2} ${y2}`}
               fill="none"
               stroke="#b0a68e"
-              strokeWidth={1.5}
+              strokeWidth={2}
             />
           );
         }
         return sources.map((source) => (
           <path
             key={`c-${node.id}-${source.id}`}
-            d={`M${source.x + NODE_W} ${source.y + NODE_H / 2} C ${source.x + NODE_W + 44} ${
+            d={`M${source.x + NODE_W} ${source.y + NODE_H / 2} C ${source.x + NODE_W + 40} ${
               source.y + NODE_H / 2
-            }, ${x2 - 44} ${y2}, ${x2 - 2} ${y2}`}
+            }, ${x2 - 40} ${y2}, ${x2 - 2} ${y2}`}
             fill="none"
             stroke="#b0a68e"
-            strokeWidth={1.5}
+            strokeWidth={2}
           />
         ));
       })}
 
       {NODES.map((node) => (
         <g key={node.id}>
-          <rect x={node.x} y={node.y} width={NODE_W} height={NODE_H} fill="#f6f2e7" stroke="#cec5ad" strokeWidth={1} />
-          <rect x={node.x} y={node.y} width={4} height={NODE_H} fill={DOMAIN_COLOUR[node.domain]} />
-          <text x={node.x + 18} y={node.y + 25} fill="#8d846f" fontSize={12} letterSpacing={1.5} className="svg-mono">
+          <rect x={node.x} y={node.y} width={NODE_W} height={NODE_H} fill="#f6f2e7" stroke="#cec5ad" strokeWidth={1.5} />
+          <rect x={node.x} y={node.y} width={5} height={NODE_H} fill={DOMAIN_COLOUR[node.domain]} />
+          <text x={node.x + 20} y={node.y + 30} fill="#8d846f" fontSize={15} letterSpacing={1.7} className="svg-mono">
             {node.domain.toUpperCase()}
           </text>
           {node.lines.map((line, i) => (
             <text
               key={i}
-              x={node.x + 18}
-              y={node.y + 51 + i * 21}
+              x={node.x + 20}
+              y={node.y + 56 + i * 24}
               fill="#2b2820"
-              fontSize={16}
+              fontSize={21}
               className="svg-body"
             >
               {line}
             </text>
           ))}
           <text
-            x={node.x + NODE_W - 18}
+            x={node.x + NODE_W - 20}
             y={node.y + NODE_H - 12}
             textAnchor="end"
             fill="#a2705a"
-            fontSize={12}
-            letterSpacing={1.4}
+            fontSize={15}
+            letterSpacing={1.6}
             className="svg-mono"
           >
             PLATE {node.plate}
@@ -296,20 +335,25 @@ function Derivation() {
         </Body>
       </div>
 
-      {/* Same pattern as the real reader's page-0 diagram (ChainDiagram.tsx):
-          fixed SVG geometry doesn't shrink to fit a phone width without its
-          labels going illegible, so narrow viewports get a horizontal
-          scroller over full-size art rather than a squeezed miniature. */}
-      <div className="mt-7 min-h-0 flex-1 overflow-x-auto overflow-y-hidden border border-[#3a4348]">
-        <div className="h-full min-w-[720px]">
+      {/* The art sizes off its own width and takes whatever height its aspect
+          ratio asks for, so the box hugs the diagram instead of letterboxing it
+          — the previous `h-full w-full` stretched the *box* to a 4.8:1 slot and
+          then shrank 2.7:1 art to fit its height, which threw away half the
+          width in empty gutters and halved the type along with it.
+
+          Same pattern as the real reader's page-0 diagram (ChainDiagram.tsx):
+          fixed SVG geometry doesn't shrink to a phone width without its labels
+          going illegible, so narrow viewports get a horizontal scroller over
+          full-size art rather than a squeezed miniature. */}
+      <div className="mt-5 flex min-h-0 flex-1 items-center overflow-x-auto overflow-y-hidden">
+        <div className="w-full min-w-[860px] border border-[#3a4348]">
           <ChainPlate />
         </div>
       </div>
 
-      <p className="mono mt-5 max-w-[64ch] leading-[1.8] text-[var(--dimmer)]">
-        read the plate numbers, not the rows: the pages are selected from the chain and ordered for
-        reading. the third‑order consequence at the bottom right is plate 08; the first‑order one
-        above the rule is plate 01. a citation is not a running order.
+      <p className="note mt-4 max-w-[96ch]">
+        read the plate numbers, not the rows: pages are selected from the chain and ordered for
+        reading. a citation is not a running order.
       </p>
     </Sheet>
   );
@@ -329,26 +373,34 @@ function OneWorld() {
         </Body>
       </div>
 
-      <ul className="mt-7 grid min-h-0 flex-1 grid-cols-3 grid-rows-4 gap-[7px] sm:grid-cols-4 sm:grid-rows-3 lg:grid-cols-6 lg:grid-rows-2">
+      {/* Square cells. A plate is a square object and `Scene` crops to fill, so
+          a wide cell silently throws away the top and bottom of every
+          composition — the sky and the ground, which is most of what these
+          scenes are. */}
+      <div className="mt-5 flex min-h-0 flex-1 items-center justify-center">
+        <ul className="plate-strip grid w-full grid-cols-3 gap-[7px] sm:grid-cols-4">
         {PLATES.map((plate) => (
           <li
             key={plate.index}
-            className="group relative overflow-hidden border border-[#2c383d] transition-transform duration-300 ease-out hover:z-10 hover:scale-[1.06]"
+            className="group relative aspect-square overflow-hidden border border-[#2c383d] transition-transform duration-300 ease-out hover:z-10 hover:scale-[1.06]"
           >
             <plate.Scene />
-            <span className="mono absolute left-1.5 top-1.5 text-[10px] text-[#f4efe4] mix-blend-difference">
+            {/* A solid chip, not `mix-blend-difference`. Differenced white
+                against these mid-tone skies came out as a barely-there grey
+                that vanished entirely on the pale plates. */}
+            <span className="mono absolute left-0 top-0 bg-[#0d1214cc] px-1.5 py-[3px] text-[10px] leading-none text-[#f4efe4]">
               {String(plate.index).padStart(2, '0')}
             </span>
             <span className="sr-only">{plate.alt}</span>
           </li>
         ))}
-      </ul>
+        </ul>
+      </div>
 
-      <blockquote className="mt-6 border-l-2 border-[var(--lf-ochre)] pl-5 text-[clamp(0.95rem,1.05vw,1.1rem)] italic leading-[1.6] text-[#9fb0b6]">
+      <blockquote className="border-l-2 border-[var(--lf-ochre)] pl-5 pt-5 text-[clamp(0.95rem,1.05vw,1.1rem)] italic leading-[1.55] text-[#9fb0b6]">
         Hand-inked 2D cartoon, flat matte colour, visible linework. Muted palette: chalk white, dust
         ochre, pale sage, slate blue, rust red. Thin-ribbed, impossibly tall architecture, open
-        shafts, hanging gardens. Low industrial tech: rope, canvas, copper. Figures small,
-        mid-distance. Soft hazed daylight.
+        shafts, hanging gardens. Low industrial tech: rope, canvas, copper.
         <footer className="mono mt-2 not-italic text-[var(--dimmer)]">
           styleBible · the long fall · frozen at chapter 1
         </footer>
@@ -405,13 +457,17 @@ function ABook() {
 
             <p className="mono mt-5 leading-[1.8] text-[var(--dimmer)]">
               through‑line · <span className="text-[var(--text)]">the rope crew</span> · head noun{' '}
-              <span className="text-[var(--lf-ochre)]">crew</span> · found on 8 of 12 pages
+              <span className="text-[var(--lf-ochre)]">crew</span> · 8 of 12 pages
             </p>
           </div>
         </div>
 
         <figure className="flex min-h-0 flex-col">
-          <div className="relative min-h-0 flex-1 overflow-hidden border border-[#2c383d]">
+          {/* `aspect-square` rather than `flex-1`: in the stacked fallback the
+              figure column has no definite height, so a flex-sized plate
+              resolved to zero and the picture simply was not there. A square
+              that is then clamped by the sheet's height works in both. */}
+          <div className="relative aspect-square max-h-full w-full overflow-hidden border border-[#2c383d]">
             <plate.Scene />
           </div>
           <figcaption className="mt-4 text-[clamp(1rem,1.15vw,1.2rem)] leading-[1.55] text-[#cdd6d8]">
@@ -473,7 +529,7 @@ function Compounding() {
             </p>
           </div>
         </div>
-        <p className="mono mt-5 leading-[1.8] text-[var(--dimmer)]">
+        <p className="note mt-4">
           chapter 2 above is illustrative, not a generated chapter.
         </p>
       </div>
@@ -529,7 +585,7 @@ function Close() {
           <Open>open the atlas</Open>
           <ReadFixture />
         </div>
-        <Provenance className="text-right" />
+        <Provenance />
       </div>
     </Sheet>
   );

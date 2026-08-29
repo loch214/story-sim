@@ -17,7 +17,7 @@ export default function Landing() {
 
       <footer className="border-t border-[var(--hair)] px-[7vw] py-9">
         <div className="flex flex-wrap items-baseline justify-between gap-x-10 gap-y-4">
-          <p className="mono max-w-[46ch] leading-[1.8] text-[var(--dimmer)]">
+          <p className="note max-w-[62ch]">
             story-sim runs entirely on recurring free tiers. worlds are stored in this browser and
             nowhere else.
           </p>

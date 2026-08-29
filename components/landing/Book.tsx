@@ -20,8 +20,10 @@ export interface LeafSpec {
   back: ReactNode;
 }
 
-/** Scroll consumed per leaf. Generous, because each leaf is read, not skimmed. */
-const UNIT_VH = 132;
+/** Scroll consumed per leaf. Generous, because each leaf is read, not skimmed —
+ *  but not so generous that a turn takes three flicks of the wheel to finish,
+ *  which is what 132vh felt like: the sheet crept rather than swung. */
+const UNIT_VH = 104;
 
 /** Where inside its unit a leaf dwells, turns, and has finished turning. */
 const TURN_FROM = 0.32;
@@ -131,7 +133,14 @@ export default function Book({ leaves }: { leaves: LeafSpec[] }) {
                 turns={turns}
                 progress={scrollYProgress}
                 active={open === i}
-                pastTurn={i < open}
+                // Every leaf is a full-size 3D layer carrying a blurred cast
+                // shadow, a grain tile and a large SVG. Painting all seven of
+                // them every frame is what made the scroll stutter, even though
+                // at most two are ever on screen: the one turning and the one
+                // being revealed under it. The rest are told not to paint. One
+                // leaf of slack either side absorbs the frame of lag between
+                // the scroll crossing a threshold and React re-rendering.
+                dormant={i < open - 1 || i > open + 1}
               />
             ))}
           </div>
@@ -177,7 +186,7 @@ function Leaf({
   turns,
   progress,
   active,
-  pastTurn,
+  dormant,
 }: {
   leaf: LeafSpec;
   index: number;
@@ -185,7 +194,7 @@ function Leaf({
   turns: number;
   progress: MotionValue<number>;
   active: boolean;
-  pastTurn: boolean;
+  dormant: boolean;
 }) {
   const unit = 1 / (turns + 1);
   const from = (index + TURN_FROM) * unit;
@@ -208,28 +217,54 @@ function Leaf({
     clamp: true,
   });
   const x = useTransform(progress, [from, from + span / 2, to], [0, 26, 0], { clamp: true });
-  const opacity = useTransform(progress, [to - span * 0.26, to], [1, 0], { clamp: true });
+
+  // Every scroll-driven value below is written as one continuous function of
+  // progress that is *exactly* right at both ends of its own window, rather
+  // than as a range transform that React then overrides with a hard 0 or 1
+  // once a piece of state says the window has been left.
+  //
+  // That override was the bug behind a blank page: swapping a style key
+  // between a MotionValue and a plain number detaches the motion value, and it
+  // was never reattached on the way back — so scrolling up to the cover left
+  // every leaf already read stuck at opacity 0, and the reader got a black
+  // sheet. Framer applies these imperatively, outside React's diffing, so the
+  // only safe thing to hand a style key is the same MotionValue for the whole
+  // life of the component. The endpoints are pinned inside the function
+  // instead, which is what the hard-coding was there to guarantee.
+  const opacity = useTransform(progress, (p) => {
+    if (p >= to) return 0;
+    const fade = span * 0.26;
+    return p <= to - fade ? 1 : (to - p) / fade;
+  });
 
   // The light that crosses the sheet as it swings past the lamp.
   const rake = useTransform(progress, [from, from + span * 0.55, to], [0, 0.95, 0.3], { clamp: true });
   const rakeShift = useTransform(progress, [from, to], ['-46%', '52%'], { clamp: true });
 
-  // Its reveal, which is the previous sheet's turn.
-  const revealFrom = (index - 1 + TURN_FROM) * unit;
-  const revealTo = (index - 1 + TURN_TO) * unit;
-  const shade = useTransform(progress, [revealFrom, revealTo], [0.82, 0], { clamp: true });
-  const contentY = useTransform(progress, [revealFrom + (revealTo - revealFrom) * 0.4, revealTo], [30, 0], {
-    clamp: true,
-  });
-  const contentOpacity = useTransform(
-    progress,
-    [revealFrom + (revealTo - revealFrom) * 0.35, revealTo],
-    [0, 1],
-    { clamp: true },
-  );
-
+  // Its reveal, which is the previous sheet's turn. The first leaf has no
+  // sheet above it, so it is simply always revealed.
   const first = index === 0;
   const last = index === total - 1;
+
+  const revealFrom = (index - 1 + TURN_FROM) * unit;
+  const revealTo = (index - 1 + TURN_TO) * unit;
+  const revealSpan = revealTo - revealFrom;
+
+  const shade = useTransform(progress, (p) => {
+    if (first || p >= revealTo) return 0;
+    if (p <= revealFrom) return 0.82;
+    return 0.82 * (1 - (p - revealFrom) / revealSpan);
+  });
+  const contentOpacity = useTransform(progress, (p) => {
+    if (first || p >= revealTo) return 1;
+    const start = revealFrom + revealSpan * 0.35;
+    return p <= start ? 0 : (p - start) / (revealTo - start);
+  });
+  const contentY = useTransform(progress, (p) => {
+    if (first || p >= revealTo) return 0;
+    const start = revealFrom + revealSpan * 0.4;
+    return p <= start ? 30 : 30 * (1 - (p - start) / (revealTo - start));
+  });
 
   return (
     <motion.article
@@ -239,16 +274,15 @@ function Leaf({
       // matches what is actually facing the reader.
       inert={!active}
       style={{
+        // `last` is a constant for the life of the component, so choosing on it
+        // is not the style-key swapping described above — the key is handed the
+        // same thing on every render.
         rotateY: last ? 0 : rotateY,
         z: last ? REST_Z : z,
         x: last ? 0 : x,
-        // Once `open` has moved past this leaf, its own turn is unambiguously
-        // finished — hard-zero with a plain number rather than trusting the
-        // continuous motion value: Framer drives scroll-linked transforms via
-        // WAAPI directly on the node, and the interpolated value can settle a
-        // few percent short of its clamped endpoint, leaving a faint sliver of
-        // an old leaf visible at the spine long after it should be gone.
-        opacity: last ? 1 : pastTurn ? 0 : opacity,
+        opacity: last ? 1 : opacity,
+        visibility: dormant ? 'hidden' : 'visible',
+        willChange: dormant ? 'auto' : 'transform, opacity',
         zIndex: total - index,
         transformOrigin: 'left center',
         transformStyle: 'preserve-3d',
@@ -260,24 +294,8 @@ function Leaf({
         className="leaf-face grain absolute inset-0 overflow-hidden rounded-r-[4px] rounded-l-[2px]"
         style={{ backfaceVisibility: 'hidden' }}
       >
-        {/* Once this leaf is `active` (the one currently being read), its reveal
-            is unambiguously finished — bypass the continuous contentOpacity /
-            shade motion values rather than trust them to have settled exactly
-            at 1 / 0. Same WAAPI-precision issue as the article's own opacity
-            above: the natural value gets close but not always exactly there,
-            which read as a permanently under-lit final leaf.
-
-            Critically, this swaps the *value* at each style key (a plain
-            number vs. the MotionValue) rather than swapping the whole `style`
-            object between `undefined` and `{...}`. Framer Motion applies
-            MotionValues via direct, imperative DOM mutation outside React's
-            own diffing; dropping a key from the style object on a later
-            render doesn't reliably clear whatever value it last wrote, so the
-            leaf stayed permanently stuck at opacity 0. Keeping the key always
-            present, and only ever swapping what's assigned to it, gives every
-            render something concrete to apply. */}
         <motion.div
-          style={{ y: first || active || pastTurn ? 0 : contentY, opacity: first || active || pastTurn ? 1 : contentOpacity }}
+          style={{ y: contentY, opacity: contentOpacity }}
           className={`relative z-10 flex h-full flex-col ${first ? 'settle' : ''}`}
         >
           {leaf.front}
@@ -287,7 +305,7 @@ function Leaf({
         {!first && (
           <motion.div
             aria-hidden
-            style={{ opacity: active || pastTurn ? 0 : shade }}
+            style={{ opacity: shade }}
             className="pointer-events-none absolute inset-0 z-20 bg-[#05090a]"
           />
         )}
