@@ -100,3 +100,136 @@ body {
     background-position: -60% 0;
   }
 }
+
+/* ───────────────────────────────────────────────────────────────────────────
+   Landing surface — "The Turning Book"
+
+   The chrome tokens above are inherited whole; nothing here redefines them.
+   What is added is the physical vocabulary of a sheet of paper in 3D space:
+   a plate-black front, a vellum back, a lit edge and a cast shadow. Only the
+   landing uses these.
+   ─────────────────────────────────────────────────────────────────────────── */
+:root {
+  /* The fixture world's frozen palette. Quoted, not invented — it is the
+     diagramHints.palette of fixtures/chapter-1.ts. */
+  --lf-chalk: #f4efe4;
+  --lf-ochre: #c9a227;
+  --lf-sage: #7d8c73;
+  --lf-slate: #4a5a6a;
+  --lf-rust: #b4553c;
+
+  --leaf-face: #131b1e;
+  --leaf-face-lit: #1b2529;
+  --leaf-edge: #38484d;
+}
+
+/* Browser surfaces are part of the design, not the browser's business. */
+::selection {
+  background: var(--lf-ochre);
+  color: #17130a;
+}
+
+html {
+  scrollbar-color: var(--hair-bright) var(--ink);
+  scrollbar-width: thin;
+}
+
+/* The leaf: a mounted plate. The edge is a lit bevel rather than a flat border,
+   so the sheet reads as having thickness when it rotates past the light. */
+.leaf-face {
+  background:
+    linear-gradient(112deg, var(--leaf-face-lit) 0%, var(--leaf-face) 38%, #0f1619 100%);
+  box-shadow:
+    inset 1px 0 0 rgba(255, 255, 255, 0.055),
+    inset 0 1px 0 rgba(255, 255, 255, 0.035),
+    inset -1px 0 0 rgba(0, 0, 0, 0.5),
+    22px 26px 60px -18px rgba(0, 0, 0, 0.82),
+    4px 6px 14px -6px rgba(0, 0, 0, 0.6);
+}
+
+/* The back of a leaf. Vellum, ruled with the chapter's own botanical margin
+   motif — the reader sees it only for the half-second the sheet is edge-on. */
+.leaf-back {
+  background:
+    radial-gradient(120% 90% at 78% 12%, rgba(201, 162, 39, 0.16), transparent 62%),
+    linear-gradient(200deg, #efe9dc 0%, var(--vellum) 48%, #ded6c3 100%);
+  box-shadow:
+    inset -1px 0 0 rgba(0, 0, 0, 0.16),
+    inset 0 1px 0 rgba(255, 255, 255, 0.6),
+    -20px 26px 58px -20px rgba(0, 0, 0, 0.8);
+}
+
+/* Raking light: a hard band that crosses the sheet as it swings past the lamp.
+   Position is driven from scroll, so this only declares the gradient. */
+.leaf-rake {
+  background: linear-gradient(
+    100deg,
+    rgba(255, 250, 235, 0) 34%,
+    rgba(255, 250, 235, 0.13) 47%,
+    rgba(255, 250, 235, 0.2) 50%,
+    rgba(255, 250, 235, 0.09) 55%,
+    rgba(0, 0, 0, 0.34) 74%,
+    rgba(0, 0, 0, 0.58) 100%
+  );
+}
+
+.grain {
+  background-image: radial-gradient(rgba(255, 255, 255, 0.045) 0.5px, transparent 0.6px);
+  background-size: 3px 3px;
+}
+
+/* Prose on a leaf. Newsreader is a reading face and wants the measure kept. */
+.leaf-prose {
+  max-width: 58ch;
+  font-size: clamp(1rem, 0.92rem + 0.4vw, 1.18rem);
+  line-height: 1.62;
+  color: var(--dim);
+}
+
+.leaf-title {
+  font-family: var(--font-display), Georgia, serif;
+  font-optical-sizing: auto;
+  letter-spacing: -0.028em;
+  line-height: 0.94;
+  text-wrap: balance;
+  color: var(--text);
+}
+
+/* The one entrance the page authors: content on a leaf rises out of the sheet
+   as the sheet settles, never on every section independently. */
+@keyframes leaf-settle {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 14px, 0);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.settle > * {
+  animation: leaf-settle 620ms cubic-bezier(0.16, 1, 0.3, 1) backwards;
+}
+.settle > *:nth-child(1) { animation-delay: 60ms; }
+.settle > *:nth-child(2) { animation-delay: 130ms; }
+.settle > *:nth-child(3) { animation-delay: 200ms; }
+.settle > *:nth-child(4) { animation-delay: 270ms; }
+.settle > *:nth-child(5) { animation-delay: 340ms; }
+.settle > *:nth-child(6) { animation-delay: 410ms; }
+
+@media (prefers-reduced-motion: reduce) {
+  .settle > * {
+    animation: none;
+  }
+}
+
+/* SVG text cannot resolve var() inside presentation attributes, so the diagram's
+   faces are set by class instead. Same three faces, same three jobs. */
+.svg-mono {
+  font-family: var(--font-mono), ui-monospace, monospace;
+}
+
+.svg-body {
+  font-family: var(--font-body), Georgia, serif;
+}

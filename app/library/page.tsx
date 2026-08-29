@@ -1,9 +1,10 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import Library from '@/components/Library';
 import Reader from '@/components/Reader';
 import { listChapters, listImages, listWorlds } from '@/lib/db';
+import { fixtureChapter } from '@/fixtures/chapter-1';
 import { seedFixtureWorld } from '@/fixtures/seed';
 import type { StoredChapter, StoredImage, StoredWorld } from '@/lib/types';
 
@@ -21,6 +22,9 @@ export default function Home() {
   const [images, setImages] = useState<Map<string, StoredImage>>(new Map());
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  /** Set once the ?read=long-fall deep link from the landing page is honoured. */
+  const deepLinked = useRef(false);
 
   const refreshWorlds = useCallback(async () => {
     try {
@@ -50,6 +54,24 @@ export default function Home() {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     if (openWorldId) refreshOpenWorld(openWorldId);
   }, [openWorldId, refreshOpenWorld]);
+
+  // "read the long fall" on the landing page lands here. Seeding the fixture is
+  // local-only and costs no quota, so it can happen without asking — but only
+  // once, and only if that world is not already on the shelf.
+  useEffect(() => {
+    if (!loaded || deepLinked.current) return;
+    if (new URLSearchParams(window.location.search).get('read') !== 'long-fall') return;
+    deepLinked.current = true;
+    window.history.replaceState(null, '', '/library');
+    (async () => {
+      const shelf = await listWorlds();
+      const existing = shelf.find((world) => world.title === fixtureChapter.worldTitle);
+      setOpenWorldId(existing ? existing.id : await seedFixtureWorld());
+      await refreshWorlds();
+    })().catch((cause: unknown) => {
+      setError(cause instanceof Error ? cause.message : 'Could not load the fixture world.');
+    });
+  }, [loaded, refreshWorlds]);
 
   async function seedFixture() {
     try {

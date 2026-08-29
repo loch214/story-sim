@@ -282,14 +282,50 @@ is checked at assembly. Rule 19 additionally requires the scene to be **at least
 
 | Part | Cap | Notes |
 |---|---|---|
-| `imagePrompt` | 650 | The per-page scene, and the only varying part |
-| shot type | 24 | Enum, bounded by construction |
+| `imagePrompt` | 900 | The per-page scene, and the only varying part. Also has a **floor** — see below |
+| shot type | 23 | Enum, bounded by construction |
 | entity descriptions | 2 × 110 = 220 | `entityRefs` is capped at 2 per page |
 | visual laws | 3 × 70 = 210 | |
 | `styleBible` | 320 | Frozen forever — it must fit forever |
-| composition clause | 86 | Fixed string |
-| separators | ~12 | |
-| **worst case** | **1518** | ~530 characters of headroom |
+| composition clause | 73 | Fixed string |
+| separators | 15 | Five × `" | "` |
+| **worst case** | **1767** | 281 characters of headroom |
+
+#### The scene floor: `SCENE_CHARS_MIN`
+
+Rule 19 is a ratio, and the model never sees the assembled prompt it is a ratio
+*of*. So the floor is also stated in characters, in `lib/types.ts`, and that is
+the number `lib/prompts.ts` asks for:
+
+| Page carries | Shared parts | Scene must reach |
+|---|---|---|
+| no `entityRefs` | ~640 | ~427 |
+| one `entityRef` | ~753 | ~502 |
+| two `entityRefs` | ~866 | ~578 |
+
+`SCENE_CHARS_MIN` is 580 — the worst case rounded up, so a scene at or above it
+clears rule 19 whatever else the page carries.
+
+**Why the cap is 900 and not 650.** `imagePrompt` is the one field with both a
+cap and a floor, and the gap between them is the target the model has to hit
+blind — it cannot count its own characters. At a 650 cap a page carrying two
+`entityRefs` had to land between 578 and 650, a 72-character window, so a scene
+could follow the instruction and still miss rule 19 by a few words. Raising the
+cap to 900 widens that window to 322 while the worst-case assembled prompt only
+moves from 1517 to 1767, still 281 characters inside the 2048 endpoint limit.
+The prompt asks for 700–850: clear of the floor, clear of the cap.
+
+This was previously expressed to the model as "aim for 60% of the cap", i.e.
+390 characters. **390 cannot pass rule 19 in any configuration** — it is below
+even the no-entity floor of 427. Every page that followed the instruction
+failed the check, and because each `entityRef` adds ~110 characters of shared
+text, the pages that referenced entities failed hardest. Rules 17 and 19 then
+fired together and looked like two faults when they were one.
+
+Both violation messages are written to be repairable in one pass: rule 17 names
+the pages the entity is on, and rule 19 gives the target in characters rather
+than a percentage. A chapter gets one retry, so a violation the model cannot
+act on precisely spends it for nothing.
 
 **Truncation order** when a prompt still exceeds 2048 — deterministic, applied
 in this sequence until it fits:
@@ -349,8 +385,9 @@ Applied to every normalised `ChapterResponse` before persistence.
     ≤40 words in the contradictory case. Chapter 1 always coerces to
     `additive` — there is nothing yet to contradict.
 13. Length caps that keep assembly inside 2048 characters: every `imagePrompt`
-    ≤650, every `namedEntities[].visualDescription` ≤110, every `Effect.text`
-    ≤25 words.
+    ≤900, every `namedEntities[].visualDescription` ≤110, every `Effect.text`
+    ≤25 words. `imagePrompt` also has a *floor* — see rule 19 and
+    § The scene floor.
 14. Every `visualLaw` ≤70 characters and not phrased as an absence.
 15. The arc tiles pages 1–12 contiguously, 2–5 movements, label ≤6 words.
 16. Pages are selected from the chain, not printed off it — see § below.

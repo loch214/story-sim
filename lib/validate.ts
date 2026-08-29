@@ -339,15 +339,24 @@ export function validateChapter(
   // 17. Named entities recur to make the book cohere, but a book set entirely
   // in three places has no world around it. Caps the repetition and reserves
   // pages that must go somewhere new.
-  const entityUse = new Map<string, number>();
+  // Pages are tracked, not just counted: "appears on 6 of 12, cap is 5" tells
+  // the model it overshot but not where, so repairing it means re-deriving the
+  // whole page set from scratch — and the one retry gets spent reintroducing
+  // the same fault. Naming the pages makes the fix a deletion.
+  const entityUse = new Map<string, number[]>();
   for (const page of chapter.pages) {
     for (const name of new Set(page.entityRefs)) {
-      entityUse.set(name, (entityUse.get(name) ?? 0) + 1);
+      entityUse.set(name, [...(entityUse.get(name) ?? []), page.index]);
     }
   }
-  for (const [name, count] of entityUse) {
-    if (count > ENTITY_PAGES_MAX) {
-      v.push(`Rule 17: "${name}" appears on ${count} of ${PAGES_PER_CHAPTER} pages, cap is ${ENTITY_PAGES_MAX}. Entities should recur, not dominate.`);
+  for (const [name, pages] of entityUse) {
+    if (pages.length > ENTITY_PAGES_MAX) {
+      v.push(
+        `Rule 17: "${name}" appears on ${pages.length} of ${PAGES_PER_CHAPTER} pages, cap is ${ENTITY_PAGES_MAX}. ` +
+          `It is on pages ${pages.join(', ')} — remove it from entityRefs on ${pages.length - ENTITY_PAGES_MAX} ` +
+          'of those, choosing the pages where it matters least, and describe the place in that page\'s ' +
+          'imagePrompt instead. Entities should recur, not dominate.',
+      );
     }
   }
   const freshPages = chapter.pages.filter((p) => p.entityRefs.length === 0).length;
@@ -434,10 +443,26 @@ export function validateChapter(
       const assembled = assembleImagePrompt(styleBible, page, entities, chapter.worldCanon.visualLaws);
       const share = page.imagePrompt.length / assembled.prompt.length;
       if (share < SCENE_SHARE_MIN) {
+        // Report the target in characters, not just the percentage it missed.
+        // The model never sees the assembled prompt, so a bare "38%, need 40%"
+        // asks it to hit a ratio against a string it cannot inspect — it has no
+        // way to know whether that means adding ten words or ninety. `rest` is
+        // the shared material this page carries; the scene has to be
+        // SHARE/(1-SHARE) of it to clear the floor.
+        const rest = assembled.prompt.length - page.imagePrompt.length;
+        const needed = Math.ceil((rest * SCENE_SHARE_MIN) / (1 - SCENE_SHARE_MIN));
         v.push(
-          `Rule 19: page ${page.index}'s scene is ${Math.round(share * 100)}% of its assembled image ` +
-            `prompt, need at least ${Math.round(SCENE_SHARE_MIN * 100)}%. The styleBible and visual laws ` +
-            'are identical on every plate — write more of the scene itself, or the plates will look alike.',
+          `Rule 19: page ${page.index}'s scene is ${page.imagePrompt.length} characters, ` +
+            `${Math.round(share * 100)}% of its assembled image prompt, and needs to be at least ` +
+            `${Math.round(SCENE_SHARE_MIN * 100)}%. Rewrite this imagePrompt to at least ${needed} ` +
+            `characters (cap ${PROMPT_LIMITS.imagePrompt}) — add specific visual detail, do not pad. ` +
+            'The styleBible and visual laws are identical on every plate, so a thin scene here ' +
+            'means a plate that looks like every other plate.' +
+            (page.entityRefs.length > 0
+              ? ` Dropping an entityRef from this page would lower the bar to ${Math.ceil(
+                  ((rest - PROMPT_LIMITS.entityDescription) * SCENE_SHARE_MIN) / (1 - SCENE_SHARE_MIN),
+                )}.`
+              : ''),
         );
       }
     }

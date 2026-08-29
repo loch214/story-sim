@@ -23,7 +23,7 @@ export const RULE_TYPES = ['additive', 'contradictory', 'ambiguous'] as const;
 
 // ── Limits ────────────────────────────────────────────────────────────────
 // Flux Schnell caps the prompt at 2048 characters. Every part is budgeted so
-// the worst case lands near 1782. See docs/SCHEMA.md § Character budget.
+// the worst case lands at 1767. See docs/SCHEMA.md § Character budget.
 
 export const PROMPT_LIMITS = {
   total: 2048,
@@ -42,10 +42,17 @@ export const PROMPT_LIMITS = {
   entityRefsPerPage: 2,
   /**
    * The scene should dominate the prompt, not trail it. Budgeted against the
-   * 2048 cap: 320 styleBible + 210 laws + 220 entities + 20 shot + 60
-   * composition + separators leaves comfortable room for this to lead.
+   * 2048 cap: 320 styleBible + 214 laws + 222 entities + 23 shot + 73
+   * composition + 15 separators = 867, leaving room for this to lead.
+   *
+   * 900, not 650. This is a *cap*, but rule 19 gives the same field a floor —
+   * 578 characters on a page carrying two entityRefs (see SCENE_CHARS_MIN). At
+   * 650 that left a 72-character window for a model that cannot count its own
+   * characters, so a page could satisfy the instruction and still miss rule 19
+   * by a few words. 900 widens the window to 322 and still lands the worst-case
+   * assembled prompt at 1767, well inside the 2048 endpoint limit.
    */
-  imagePrompt: 650,
+  imagePrompt: 900,
   /**
    * 70, not 100. Shrunk alongside styleBible so the shared prefix stays a
    * minority of the prompt; three laws at 70 is 210, well under the scene.
@@ -94,6 +101,23 @@ export const MOVEMENT_LABEL_MAX_WORDS = 6;
  * gets room; the cap stops the chapter collapsing onto a single idea.
  */
 export const PAGES_FROM_ONE_EFFECT_MAX = 4;
+/**
+ * Rule 19's floor, restated in the only unit the model can aim at: characters.
+ *
+ * Rule 19 is a *ratio* — the scene against the whole assembled prompt — and the
+ * model never sees that assembly, so it cannot check itself against it. The
+ * prompt used to translate the ratio as "aim for 60% of the 650-character cap",
+ * which is 390, and 390 characters cannot pass rule 19 in any configuration:
+ * the shared parts run ~640 characters with no entity references and ~866 with
+ * two, so the scene needs 2/3 of that — 427 to 578 — merely to reach 40%. Every
+ * page that followed the instruction failed the check.
+ *
+ * 580 is the worst case (full styleBible, three laws, two entity descriptions)
+ * rounded up, so a scene at or above it clears rule 19 whatever else the page
+ * carries. The cap is still PROMPT_LIMITS.imagePrompt; this is the floor.
+ */
+export const SCENE_CHARS_MIN = 580;
+
 /** How many of the twelve pages one named entity may appear on. */
 export const ENTITY_PAGES_MAX = 5;
 /** Pages that must go somewhere not already in namedEntities. */

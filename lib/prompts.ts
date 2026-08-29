@@ -16,6 +16,7 @@ import {
   PAGES_PER_CHAPTER,
   PAGE_WORDS,
   PROMPT_LIMITS,
+  SCENE_CHARS_MIN,
   THROUGH_LINE_PAGES_MIN,
   TRANSITION_NOTE_MAX_WORDS,
   WORLD_TITLE_MAX_WORDS,
@@ -415,8 +416,11 @@ Each page:
   - imagePrompt: UP TO ${PROMPT_LIMITS.imagePrompt} characters, and use them. This is the
     only part of the image instruction that differs from page to page — everything else
     the illustrator sees is identical across all twelve, so a thin scene here means a
-    plate that looks like every other plate. Aim for ${Math.round(PROMPT_LIMITS.imagePrompt * 0.6)}+
-    characters of specific visual description: the subject and what it is doing, the
+    plate that looks like every other plate. NEVER FEWER THAN ${SCENE_CHARS_MIN} characters —
+    a shorter scene is rejected, because the styleBible and laws around it are fixed and
+    a thin scene lets them drown it. Aim for ${SCENE_CHARS_MIN + 120}–${PROMPT_LIMITS.imagePrompt - 50},
+    which leaves margin above the floor rather than landing on it. Write specific visual
+    description and nothing else: the subject and what it is doing, the
     setting, the arrangement of things in the frame, the distance, the time of day, the
     weather and quality of light, the colours and textures actually present, what is worn
     or carried, what is broken or new. Describe the SCENE ONLY. No style words of any
@@ -426,7 +430,13 @@ Each page:
   - entityRefs: at most ${PROMPT_LIMITS.entityRefsPerPage} names from
     worldCanon.namedEntities that appear in this scene. Their descriptions are spliced in
     automatically, so do not repeat their appearance in the imagePrompt. Most pages
-    should reference none.
+    should reference NONE — an empty entityRefs is the normal case, not the exception.
+    Every reference costs twice: it spends one of the ${ENTITY_PAGES_MAX} pages that
+    entity is allowed across the whole chapter, and it adds ~110 characters of shared
+    text the scene then has to outweigh. Count as you go: BEFORE you finish, tally how
+    many pages name each entity and make sure no name reaches ${ENTITY_PAGES_MAX + 1}.
+    If one is about to, drop it from the page where it matters least and describe that
+    place in the imagePrompt instead.
   - altText: one sentence describing the image for a screen reader.`);
 
   if (first) {
