@@ -46,10 +46,12 @@ export default function ChainDiagram({ chapter, priorCanon, onOpenPage, highligh
           <h2 className="display text-2xl text-[var(--text)] sm:text-3xl">
             {chapter.number === 1 ? 'How this world came to be' : 'What this rule changed'}
           </h2>
-          <p className="mono text-[var(--dim)]">
-            chapter {chapter.number} · {chapter.ruleType}
-          </p>
+          <p className="text-[1rem] text-[var(--dim)]">Chapter {chapter.number}</p>
         </div>
+        <p className="mt-2 max-w-2xl text-[1rem] leading-relaxed text-[var(--dim)]">
+          Each box is something that changed. Arrows show what led to what. Boxes marked with a
+          page number are in the story — select one to go to that page.
+        </p>
         {chapter.transitionNote && (
           <p className="mt-2 max-w-2xl border-l-2 border-[var(--accent)] pl-3 text-[0.95rem] italic leading-relaxed text-[var(--dim)]">
             {chapter.transitionNote}
@@ -132,7 +134,7 @@ export default function ChainDiagram({ chapter, priorCanon, onOpenPage, highligh
                 }
                 tabIndex={clickable ? 0 : undefined}
                 role={clickable ? 'button' : undefined}
-                aria-label={clickable ? `${node.label} — open plate ${node.pageIndex}` : undefined}
+                aria-label={clickable ? `${node.label} — open page ${node.pageIndex}` : undefined}
                 style={{ cursor: clickable ? 'pointer' : 'default' }}
               >
                 <rect
@@ -173,7 +175,9 @@ export default function ChainDiagram({ chapter, priorCanon, onOpenPage, highligh
                   </text>
                 ))}
 
-                {node.domain && (
+                {/* Only the page number: the domain is already the coloured
+                    stripe, and its name meant nothing to most readers. */}
+                {node.pageIndex !== undefined && (
                   <text
                     x={node.x + node.width - DIAGRAM.padX}
                     y={node.y + node.height - 5}
@@ -184,8 +188,7 @@ export default function ChainDiagram({ chapter, priorCanon, onOpenPage, highligh
                     fill="var(--vellum-ink)"
                     opacity="0.45"
                   >
-                    {node.domain.toUpperCase()}
-                    {node.pageIndex !== undefined ? ` · PL.${node.pageIndex}` : ''}
+                    PAGE {node.pageIndex}
                   </text>
                 )}
               </g>
@@ -194,8 +197,8 @@ export default function ChainDiagram({ chapter, priorCanon, onOpenPage, highligh
         </svg>
       </div>
 
-      <p className="mono mt-2 px-1 text-[var(--dimmer)]">
-        {chapter.diagramHints.motif} · select any effect to open its plate
+      <p className="mt-2 px-1 text-[0.95rem] text-[var(--dimmer)] sm:hidden">
+        Scroll sideways to see the whole picture.
       </p>
     </div>
   );

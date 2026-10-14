@@ -1,42 +1,53 @@
 'use client';
 
 import type { HaltReason } from '@/lib/imageQueue';
-import { formatDuration, quotaWindow } from '@/lib/quota';
-import { NEURONS_PER_PLATE } from '@/lib/types';
+import { formatDuration, formatLocalTime, quotaWindow } from '@/lib/quota';
 
 interface Props {
   total: number;
   ready: number;
   refused: number;
   pending: number;
-  neurons: number;
   phase: 'idle' | 'rendering' | 'halted';
   halt: HaltReason | null;
   haltedAt?: number;
   hasArtwork: boolean;
+  /**
+   * Offer free placeholder pictures. Only for the example book, whose pages
+   * arrive without artwork — on a reader's own book it would look like their
+   * real pictures had been swapped for noise.
+   */
+  offerSamples: boolean;
+  /** Development tooling (clearing artwork to redraw). Never shown in production. */
+  devTools: boolean;
   onRender: () => void;
   onDemo: () => void;
   onClearArtwork: () => void;
 }
 
-const number = new Intl.NumberFormat('en-GB', { maximumFractionDigits: 0 });
-
+/**
+ * One line of status above the page, said in words a reader uses: pictures and
+ * pages, not plates and neurons. When every picture is drawn there is nothing
+ * to say, so it says nothing.
+ */
 export default function RenderBar(props: Props) {
-  const { total, ready, refused, pending, neurons, phase, halt, haltedAt } = props;
+  const { total, ready, refused, pending, phase, halt, haltedAt } = props;
 
   if (phase === 'rendering') {
     const done = ready + refused;
     return (
       <Strip>
-        <div className="flex flex-1 items-center gap-4">
-          <p className="mono text-[var(--accent)]">drawing {done} of {total}</p>
-          <div className="h-[3px] flex-1 bg-[var(--hair)]">
+        <div className="flex flex-1 items-center gap-4" role="status">
+          <p className="text-[0.98rem] text-[var(--text)]">
+            Drawing the pictures… <span className="tabular-nums text-[var(--dim)]">{done} of {total}</span>
+          </p>
+          <div className="h-1.5 min-w-24 flex-1 overflow-hidden rounded-full bg-[var(--hair)]">
             <div
-              className="h-full bg-[var(--accent)] transition-[width] duration-500"
+              className="h-full rounded-full bg-[var(--accent)] transition-[width] duration-500"
               style={{ width: `${(done / Math.max(total, 1)) * 100}%` }}
             />
           </div>
-          <p className="mono text-[var(--dimmer)]">{number.format(neurons)} neurons</p>
+          <p className="hidden text-[0.95rem] text-[var(--dimmer)] sm:block">You can start reading now.</p>
         </div>
       </Strip>
     );
@@ -49,46 +60,44 @@ export default function RenderBar(props: Props) {
   if (pending > 0) {
     return (
       <Strip>
-        <p className="mono text-[var(--dim)]">
-          {pending} plate{pending === 1 ? '' : 's'} to draw
+        <p className="text-[0.98rem] text-[var(--dim)]">
+          {pending === total
+            ? 'This book has no pictures yet.'
+            : `${pending} page${pending === 1 ? '' : 's'} still need${pending === 1 ? 's' : ''} a picture.`}
         </p>
-        <div className="flex items-center gap-3">
-          {/* The cost rides on the button rather than beside it: the number that
-              matters is the one under the cursor at the moment of committing. */}
+        <div className="flex flex-wrap items-center gap-3">
+          {props.offerSamples && (
+            <button type="button" onClick={props.onDemo} className="btn">
+              Show sample pictures (free)
+            </button>
+          )}
+          {/* The cost rides with the button rather than in a footnote: this is
+              the moment the shared allowance gets spent. */}
           <button
             type="button"
             onClick={props.onRender}
-            className="mono border border-[var(--hair-bright)] px-3 py-1.5 text-[var(--text)] transition-colors hover:bg-[var(--raised)]"
+            className={props.offerSamples ? 'btn' : 'btn-primary'}
+            title="Uses part of today’s shared free allowance."
           >
-            draw the plates · ≈{number.format(pending * NEURONS_PER_PLATE)} neurons
-          </button>
-          <button
-            type="button"
-            onClick={props.onDemo}
-            className="mono text-[var(--dimmer)] transition-colors hover:text-[var(--text)]"
-            title="Placeholder artwork. Costs nothing."
-          >
-            demo artwork
+            Draw the pictures
           </button>
         </div>
       </Strip>
     );
   }
 
+  if (refused === 0 && !props.devTools) return null;
+
   return (
     <Strip>
-      <p className="mono text-[var(--dimmer)]">
-        {ready} plate{ready === 1 ? '' : 's'} drawn
-        {refused > 0 && ` · ${refused} withheld`}
-        {neurons > 0 && ` · ${number.format(neurons)} neurons`}
+      <p className="text-[0.98rem] text-[var(--dimmer)]">
+        {refused > 0
+          ? `${refused} picture${refused === 1 ? '' : 's'} couldn’t be drawn. The rest of the book is fine.`
+          : `All ${ready} pictures drawn.`}
       </p>
-      {props.hasArtwork && (
-        <button
-          type="button"
-          onClick={props.onClearArtwork}
-          className="mono text-[var(--dimmer)] transition-colors hover:text-[var(--text)]"
-        >
-          clear artwork
+      {props.devTools && props.hasArtwork && (
+        <button type="button" onClick={props.onClearArtwork} className="btn-quiet text-[0.9rem]">
+          Clear artwork (dev)
         </button>
       )}
     </Strip>
@@ -112,53 +121,59 @@ function HaltStrip({
     const window = haltedAt ? quotaWindow(haltedAt) : null;
     return (
       <Strip tone="alert">
-        <p className="mono text-[#e8b75d]">
-          image quota gone · {ready} of {total} drawn
-        </p>
-        <div className="flex items-center gap-3">
-          {window?.ready ? (
-            <button
-              type="button"
-              onClick={onRender}
-              className="mono border border-[#e8b75d] px-3 py-1.5 text-[#e8b75d] transition-colors hover:bg-[#e8b75d] hover:text-[var(--ink)]"
-            >
-              resume — the day has turned
-            </button>
-          ) : (
-            <p className="mono text-[var(--dim)]">
-              returns at 00:00 UTC{window ? `, in ${formatDuration(window.msRemaining)}` : ''}
+        <div>
+          <p className="text-[1rem] text-[#f0c879]">
+            Today’s free pictures have run out — {ready} of {total} are drawn.
+          </p>
+          {!window?.ready && (
+            <p className="mt-0.5 text-[0.95rem] text-[var(--dim)]">
+              Your book is saved. More pictures can be drawn
+              {window
+                ? ` after ${formatLocalTime(window.resetAt)} (in ${formatDuration(window.msRemaining)})`
+                : ' tomorrow'}
+              . You can still read every page.
             </p>
           )}
         </div>
+        {window?.ready && (
+          <button type="button" onClick={onRender} className="btn-primary">
+            Finish drawing
+          </button>
+        )}
       </Strip>
     );
   }
 
   return (
     <Strip tone="alert">
-      <p className="mono text-[#d96a5b]">
-        {halt.kind === 'config'
-          ? 'not configured'
-          : // Named apart from a generic stop: this one says the fault is the
-            // same for every remaining plate, so retrying without a change will
-            // fail identically.
-            halt.kind === 'systemic'
-            ? 'drawing stopped — same fault on every plate'
-            : 'drawing stopped'}{' '}
-        · {ready} of {total} drawn
-      </p>
-      <div className="flex items-center gap-3">
-        <p className="hidden max-w-md truncate text-sm text-[var(--dimmer)] sm:block">{halt.message}</p>
-        {halt.kind !== 'config' && (
-          <button
-            type="button"
-            onClick={onRender}
-            className="mono border border-[var(--hair-bright)] px-3 py-1.5 text-[var(--text)] transition-colors hover:bg-[var(--raised)]"
-          >
-            try again
-          </button>
+      <div className="min-w-0">
+        <p className="text-[1rem] text-[#f0a294]">
+          {halt.kind === 'config'
+            ? 'Pictures can’t be drawn — Story-sim isn’t set up for it yet.'
+            : `Drawing stopped — ${ready} of ${total} pictures are done.`}
+        </p>
+        {/* Named apart from a generic stop: this one says the fault is the
+            same for every remaining picture, so retrying without a change
+            will fail identically. */}
+        <p className="mt-0.5 text-[0.95rem] text-[var(--dim)]">
+          {halt.kind === 'systemic'
+            ? 'The problem is on our side, not with your story. Trying again may not help until it is fixed.'
+            : halt.kind === 'config'
+              ? 'Whoever runs this app needs to add its picture settings.'
+              : 'Your book is saved. This is usually temporary.'}
+        </p>
+        {halt.message && (
+          <details className="mt-1 text-[var(--dimmer)]">
+            <summary className="cursor-pointer text-[0.9rem] hover:text-[var(--dim)]">Technical details</summary>
+            <p className="mt-1 max-w-2xl text-[0.88rem] leading-relaxed">{halt.message}</p>
+          </details>
         )}
       </div>
+      {halt.kind !== 'config' && (
+        <button type="button" onClick={onRender} className="btn">
+          Try again
+        </button>
+      )}
     </Strip>
   );
 }
@@ -166,7 +181,7 @@ function HaltStrip({
 function Strip({ children, tone }: { children: React.ReactNode; tone?: 'alert' }) {
   return (
     <div
-      className={`flex flex-wrap items-center justify-between gap-x-6 gap-y-2 border-b px-4 py-2.5 sm:px-6 ${
+      className={`flex flex-wrap items-center justify-between gap-x-6 gap-y-3 border-b px-4 py-3 sm:px-6 ${
         tone === 'alert' ? 'border-[#e8b75d]/30 bg-[#e8b75d]/5' : 'border-[var(--hair)]'
       }`}
     >

@@ -61,9 +61,18 @@ it dramatises, and the app renders that derivation as a diagram.
   of three.
 - Quota exhaustion halts the pool and banners a reset time; a per-page refusal
   degrades to a styled placeholder and the pool continues.
-- Terminology that is load-bearing and must be used consistently: **world**,
+- Terminology that is load-bearing in code, docs and the export: **world**,
   **chapter**, **rule**, **plate**, **page**, **chain**, **canon**,
   **styleBible**, **arc**, **through-line**.
+- **The interface speaks plain language** (2026-10-14). Most readers are not
+  technical, so on screen these become: book (a world), "what if" (a rule),
+  picture (a plate), page, "how this world works" (the chain), drawing style
+  (the styleBible). Neurons, quotas, canon, fixture, pipeline and model names
+  never appear in the UI; cost is stated as books per day. Server error text
+  is kept behind a "Technical details" fold, never as the headline. Controls
+  are sentence case in the reading face (`.btn`, `.btn-primary`,
+  `.btn-quiet` in `app/globals.css`); `.mono` is for page numbers and small
+  labels only.
 - Stack: Next.js 16 App Router, React 19, TypeScript, Tailwind v4, deployed on
   Vercel. Motion library: `motion` (Framer Motion), approved 2026-08-29 for the
   landing surface.

@@ -184,7 +184,7 @@ export function layoutChain({ rule, chain, pageByEffect, priorCanon }: LayoutInp
     height: top + tallest + DIAGRAM.margin,
     nodes,
     edges,
-    columns: ['The rule', 'First order', 'Second order', 'Third order'].map((label, i) => ({
+    columns: ['The change', 'What it changed', 'What that led to', 'And after that'].map((label, i) => ({
       label,
       x: DIAGRAM.margin + i * (DIAGRAM.nodeWidth + DIAGRAM.colGap),
     })),

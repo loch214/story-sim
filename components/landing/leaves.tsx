@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { DOMAIN_COLOUR } from '@/lib/domain';
 import type { LeafSpec } from './Book';
+import { BOOKS_PER_DAY } from '@/lib/quota';
 import { PLATES } from './plates';
 
 /* ── shared parts, all in the app's own vocabulary ──────────────────────── */
@@ -34,12 +35,9 @@ function Body({ children, className = '' }: { children: React.ReactNode; classNa
 }
 
 /** The primary action. The only saturated fill on the whole page. */
-function Open({ children = 'Open the atlas' }: { children?: React.ReactNode }) {
+function Open({ children = 'Make a book' }: { children?: React.ReactNode }) {
   return (
-    <Link
-      href="/library"
-      className="mono inline-flex items-center gap-3 bg-[var(--lf-ochre)] px-6 py-3.5 text-[#181307] transition-[background-color,transform] duration-200 hover:bg-[#dcb436] active:translate-y-px"
-    >
+    <Link href="/library" className="btn-primary px-6 text-[1.05rem] active:translate-y-px">
       {children}
       <span aria-hidden className="text-[1.1em] leading-none">→</span>
     </Link>
@@ -48,11 +46,8 @@ function Open({ children = 'Open the atlas' }: { children?: React.ReactNode }) {
 
 function ReadFixture() {
   return (
-    <Link
-      href="/library?read=long-fall"
-      className="mono text-[var(--dim)] underline decoration-[var(--hair-bright)] decoration-1 underline-offset-[6px] transition-colors hover:text-[var(--text)] hover:decoration-[var(--lf-ochre)]"
-    >
-      read the long fall — free, no quota
+    <Link href="/library?read=long-fall" className="btn-quiet text-[1.02rem]">
+      Read an example book first
     </Link>
   );
 }
@@ -61,8 +56,8 @@ function ReadFixture() {
 function Provenance({ className = '' }: { className?: string }) {
   return (
     <p className={`note max-w-[46ch] ${className}`}>
-      plates on this page are drawn to the chapter’s style bible, not generated from it. the page
-      text is verbatim from the checked-in fixture chapter.
+      The pictures and words on this page are examples made to show what a book looks like. They
+      were not produced by the app.
     </p>
   );
 }
@@ -105,7 +100,7 @@ function Cover() {
         </p>
 
         <p className="mt-7 flex flex-wrap items-baseline gap-x-3 gap-y-1 border-t border-[#26343a] pt-5">
-          <span className="mono text-[var(--lf-ochre)]">rule</span>
+          <span className="mono text-[var(--lf-ochre)]">what if</span>
           <span className="text-[clamp(1rem,1.15vw,1.25rem)] text-[#f3f0ea]">
             gravity is half as strong
           </span>
@@ -128,7 +123,7 @@ function Cover() {
       <figure className="relative w-full overflow-hidden border border-[#2a373c] lg:h-full lg:w-auto" style={{ aspectRatio: '1 / 1' }}>
         <plate.Scene />
         <figcaption className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-[#080c0df2] to-transparent px-4 pb-3 pt-12">
-          <span className="mono text-[#c8cfd1]">plate 01 · the long fall</span>
+          <span className="mono text-[#c8cfd1]">page 1 · the long fall</span>
         </figcaption>
       </figure>
     </div>
@@ -138,21 +133,20 @@ function Cover() {
 /* ── 2 · the rule ───────────────────────────────────────────────────────── */
 
 const PREMISES = [
-  { text: 'gravity is half as strong', mode: 'rule' },
-  { text: 'a world where nobody can lie', mode: 'rule' },
+  { text: 'gravity is half as strong', mode: 'what if' },
+  { text: 'a world where nobody can lie', mode: 'what if' },
   { text: 'the last tram driver in a city that stopped needing trams', mode: 'story' },
-  { text: 'photosynthesis works at night', mode: 'rule' },
+  { text: 'plants grow at night instead of day', mode: 'what if' },
 ];
 
 function TheRule() {
   return (
     <Sheet>
-      <Head>You give it one line.</Head>
+      <Head>You type one line.</Head>
       <Body className="mt-6">
-        A rule, and the app derives what follows from it. Or somebody’s afternoon, and it tells
-        that forward instead. Two pipelines, one contract — a story run through the rule
-        pipeline comes back as twelve pages of transport policy, so the app decides which it is
-        before it spends anything.
+        A “what if” about how the world works, and it writes a story set in that world. Or the
+        start of somebody’s story, and it carries that story on to the end. It works out which one
+        you meant before it makes anything.
       </Body>
 
       <div className="mt-auto pt-6">
@@ -177,8 +171,8 @@ function TheRule() {
           ))}
         </ul>
         <p className="note mt-4 max-w-[104ch]">
-          pre‑flight restates what it thinks you meant. confirming that restatement is the only
-          confirmation there is — it writes the chapter and draws the plates in one action.
+          First it tells you what it understood. Say yes, and it writes the book and draws every
+          picture in one go — there is nothing else to set up.
         </p>
       </div>
     </Sheet>
@@ -233,7 +227,7 @@ const NODES: ChainNode[] = [
 function ChainPlate() {
   const at = (id: string) => NODES.find((n) => n.id === id)!;
   return (
-    <svg viewBox={`0 0 ${CHAIN_W} ${CHAIN_H}`} className="block h-auto w-full" role="img" aria-label="The causal chain derived from the rule: gravity is half as strong. Three orders of consequence fan out from the rule, each node citing what caused it and the plate that dramatises it.">
+    <svg viewBox={`0 0 ${CHAIN_W} ${CHAIN_H}`} className="block h-auto w-full" role="img" aria-label="A map of cause and effect for the idea: gravity is half as strong. Three rounds of consequences fan out from the idea, each box showing what caused it and the page that shows it.">
       <rect width={CHAIN_W} height={CHAIN_H} fill="#ebe5d7" />
 
       {/* order rails */}
@@ -315,7 +309,7 @@ function ChainPlate() {
             letterSpacing={1.6}
             className="svg-mono"
           >
-            PLATE {node.plate}
+            PAGE {node.plate}
           </text>
         </g>
       ))}
@@ -327,11 +321,11 @@ function Derivation() {
   return (
     <Sheet>
       <div className="flex flex-wrap items-end justify-between gap-x-10 gap-y-4">
-        <Head>Nothing is asserted.</Head>
+        <Head>Every change has a reason.</Head>
         <Body className="max-w-[44ch] flex-1 basis-[30ch]">
-          Every consequence declares what caused it, and every page declares the consequence it
-          dramatises. A chapter whose chain never touches the world’s canon is rejected before
-          a single plate is drawn.
+          Behind each book is a map of what the change caused, and what that caused in turn. Every
+          page points to the part of the map it shows, so from any page you can see why the world
+          is the way it is.
         </Body>
       </div>
 
@@ -352,8 +346,8 @@ function Derivation() {
       </div>
 
       <p className="note mt-4 max-w-[96ch]">
-        read the plate numbers, not the rows: pages are selected from the chain and ordered for
-        reading. a citation is not a running order.
+        The page numbers show where each idea turns up in the story. The story tells them in its
+        own order, not row by row.
       </p>
     </Sheet>
   );
@@ -367,9 +361,9 @@ function OneWorld() {
       <div className="flex flex-wrap items-end justify-between gap-x-10 gap-y-4">
         <Head>Twelve pictures, one world.</Head>
         <Body className="max-w-[46ch] flex-1 basis-[30ch]">
-          Each plate is generated on its own, by a model with no memory of the last one. What holds
-          them together is a style bible written once in chapter one and handed to every plate
-          afterwards, word for word, forever.
+          Each picture is drawn separately, by a program that can’t see the others. What keeps them
+          looking like one book is a short description of the drawing style, written once in the
+          first chapter and reused, word for word, for every picture after.
         </Body>
       </div>
 
@@ -398,11 +392,11 @@ function OneWorld() {
       </div>
 
       <blockquote className="border-l-2 border-[var(--lf-ochre)] pl-5 pt-5 text-[clamp(0.95rem,1.05vw,1.1rem)] italic leading-[1.55] text-[#9fb0b6]">
-        Hand-inked 2D cartoon, flat matte colour, visible linework. Muted palette: chalk white, dust
-        ochre, pale sage, slate blue, rust red. Thin-ribbed, impossibly tall architecture, open
-        shafts, hanging gardens. Low industrial tech: rope, canvas, copper.
+        Hand-inked 2D picture-book cartoon, flat matte colour, visible brush linework. Palette:
+        chalk white, dust ochre, pale sage, slate blue, rust red. Soft hazy light. Figures rounded
+        and simple, drawn with warmth.
         <footer className="mono mt-2 not-italic text-[var(--dimmer)]">
-          styleBible · the long fall · frozen at chapter 1
+          the drawing style · the long fall · set in chapter 1
         </footer>
       </blockquote>
     </Sheet>
@@ -421,15 +415,15 @@ function ABook() {
   const plate = PLATES[4];
   return (
     <Sheet>
-      <Head>Twelve facts in a row is not a book.</Head>
+      <Head>A list of facts isn’t a story.</Head>
 
       <div className="mt-7 grid min-h-0 flex-1 grid-cols-1 gap-9 lg:grid-cols-[1.05fr_1fr]">
         <div className="flex flex-col justify-between">
           <Body>
-            So the chapter has to declare an arc — two to five movements, chosen to fit the
-            premise, checked to cover all twelve pages. And it has to declare a through‑line: one
-            unnamed role, never a named character, whose word must actually appear on at least seven
-            of the twelve. Declared but absent does not pass.
+            So every book follows one hero: someone who wants something, runs into trouble that
+            only exists because of the change, and reaches an ending that answers the beginning.
+            The story picks its own pace — a change that lasts a day and one that reshapes
+            generations shouldn’t move the same way.
           </Body>
 
           <div className="mt-7">
@@ -455,10 +449,7 @@ function ABook() {
               ))}
             </ol>
 
-            <p className="mono mt-5 leading-[1.8] text-[var(--dimmer)]">
-              through‑line · <span className="text-[var(--text)]">the rope crew</span> · head noun{' '}
-              <span className="text-[var(--lf-ochre)]">crew</span> · 8 of 12 pages
-            </p>
+            <p className="note mt-5">This example moves in three parts, chosen to fit this story.</p>
           </div>
         </div>
 
@@ -472,7 +463,7 @@ function ABook() {
           </div>
           <figcaption className="mt-4 text-[clamp(1rem,1.15vw,1.2rem)] leading-[1.55] text-[#cdd6d8]">
             “{plate.text}”
-            <span className="mono mt-2 block text-[var(--dimmer)]">page 05 · verbatim</span>
+            <span className="mono mt-2 block text-[var(--dimmer)]">page 5 · example</span>
           </figcaption>
         </figure>
       </div>
@@ -487,9 +478,9 @@ function Compounding() {
     <Sheet>
       <Head>Add a second rule to the same world.</Head>
       <Body className="mt-6">
-        The new chapter is reasoned against everything the first one established, and it returns a
-        complete replacement canon. The old one is discarded, never merged — which is why two
-        rules interact instead of sitting next to each other in a list.
+        The new chapter takes in everything the first one set up, then works out the whole world
+        again from scratch — so the two changes work on each other instead of sitting side by side
+        in a list. The drawing style stays the same.
       </Body>
 
       <div className="mt-auto pt-9">
@@ -500,7 +491,7 @@ function Compounding() {
               gravity is half as strong
             </p>
             <p className="mono mt-4 leading-[1.8] text-[var(--dimmer)]">
-              canon written · style bible frozen · palette fixed
+              world set up · drawing style chosen
             </p>
             <div aria-hidden className="mt-4 flex">
               {['#f4efe4', '#c9a227', '#7d8c73', '#4a5a6a', '#b4553c'].map((colour) => (
@@ -521,7 +512,7 @@ function Compounding() {
               nobody sleeps more than two hours
             </p>
             <p className="mono mt-4 leading-[1.8] text-[var(--dimmer)]">
-              canon replaced · same style bible · same palette
+              world worked out again · same drawing style
             </p>
             <p className="mt-4 text-[0.98rem] italic leading-snug text-[#9fb0b6]">
               The night crew stopped being a shift and became most of the city — and the drop
@@ -530,7 +521,7 @@ function Compounding() {
           </div>
         </div>
         <p className="note mt-4">
-          chapter 2 above is illustrative, not a generated chapter.
+          Chapter 2 above is an illustration, not a chapter the app made.
         </p>
       </div>
     </Sheet>
@@ -541,31 +532,29 @@ function Compounding() {
 
 const FACTS = [
   {
-    term: 'Free tiers only',
+    term: 'Free, with no account',
     detail:
-      'Gemini reasons, Cloudflare Workers AI draws. No paid provider exists in the dependency tree, behind a flag, or commented out.',
+      'It runs only on free services. There is nothing to pay for, no paid version, and nothing to sign up for.',
   },
   {
-    term: '172.80 neurons a plate',
+    term: `About ${BOOKS_PER_DAY} books a day, shared`,
     detail:
-      'Measured from the response header, not the rate card. Twelve plates a chapter, one shared free allowance a day — about five chapters between everyone.',
+      'Drawing pictures uses a free daily allowance shared by everyone using Story-sim. It refills every day.',
   },
   {
     term: 'When it runs out, it stops',
-    detail:
-      'The pool halts, the banner says when the allowance resets, and every plate already drawn stays drawn.',
+    detail: 'It tells you when more pictures can be drawn, and keeps every picture already finished.',
   },
   {
-    term: 'It lives in your browser',
-    detail:
-      'IndexedDB, no account, no upload, nothing to sign into. Clear your browser data and the worlds go with it.',
+    term: 'Your books stay in your browser',
+    detail: 'Nothing is uploaded. Clear your browser data and your books go with it.',
   },
 ];
 
 function Close() {
   return (
     <Sheet>
-      <Head>What it costs, and where it lives.</Head>
+      <Head>What it costs, and where your books live.</Head>
 
       <dl className="mt-6 grid min-h-0 flex-1 content-start gap-x-12 gap-y-5 sm:grid-cols-2">
         {FACTS.map((fact) => (
@@ -582,7 +571,7 @@ function Close() {
 
       <div className="mt-auto flex flex-wrap items-end justify-between gap-x-10 gap-y-4 pt-5">
         <div className="flex flex-wrap items-center gap-x-8 gap-y-3">
-          <Open>open the atlas</Open>
+          <Open>Make a book</Open>
           <ReadFixture />
         </div>
         <Provenance />
@@ -598,42 +587,42 @@ export const LEAVES: LeafSpec[] = [
     id: 'cover',
     tab: 'cover',
     front: <Cover />,
-    back: <Back cite="the long fall · chapter 1" note="One rule in. An illustrated atlas of the world that results, out." />,
+    back: <Back cite="the long fall · chapter 1" note="One change in. An illustrated book of the world that results, out." />,
   },
   {
     id: 'rule',
-    tab: 'the rule',
+    tab: 'your idea',
     front: <TheRule />,
-    back: <Back cite="pre-flight · mode" note="A story run through the rule pipeline comes back as twelve pages of transport policy." />,
+    back: <Back cite="first, a check" note="A “what if” and a story idea are made differently, so it checks which you meant." />,
   },
   {
     id: 'chain',
-    tab: 'the chain',
+    tab: 'causes',
     front: <Derivation />,
-    back: <Back cite="page 0 · the diagram" note="Derivation is checkable, or it is decoration." />,
+    back: <Back cite="how this world works" note="Every page can show you why." />,
   },
   {
     id: 'plates',
-    tab: 'the plates',
+    tab: 'pictures',
     front: <OneWorld />,
-    back: <Back cite="styleBible · frozen" note="Twelve independent generations, one visual world. The bible is the only thing holding them." />,
+    back: <Back cite="the drawing style" note="Every picture drawn separately, held together by one description of the style." />,
   },
   {
     id: 'book',
-    tab: 'the book',
+    tab: 'the story',
     front: <ABook />,
-    back: <Back cite="arc · through-line" note="Never a recurring named character. Naming someone promises a face that twelve generations cannot keep." />,
+    back: <Back cite="the hero" note="The pictures know the hero by their clothes, never their face — clothes are what stay the same." />,
   },
   {
     id: 'compound',
-    tab: 'compounding',
+    tab: 'more chapters',
     front: <Compounding />,
-    back: <Back cite="replacement canon" note="Discard the old. Never merge." />,
+    back: <Back cite="chapter 2" note="Each new chapter works the world out again, so the changes build on each other." />,
   },
   {
     id: 'close',
-    tab: 'the colophon',
+    tab: 'the small print',
     front: <Close />,
-    back: <Back cite="colophon" note="Worlds live only in this browser." />,
+    back: <Back cite="the small print" note="Your books live only in this browser." />,
   },
 ];

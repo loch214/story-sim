@@ -1,13 +1,11 @@
 'use client';
 
-import { useEffect, useMemo } from 'react';
+import { useEffect, useState } from 'react';
 import { DOMAIN_COLOUR } from '@/lib/domain';
 import type { Effect, Page, StoredImage } from '@/lib/types';
 
 interface Props {
   page: Page;
-  /** Pages in this chapter — twelve to fifteen, chosen by the story. */
-  total: number;
   effect?: Effect;
   image?: StoredImage;
   onOpenChain: (effectId: string) => void;
@@ -21,14 +19,23 @@ interface Props {
  * Text never waits on artwork. Every page exists the moment phase 1
  * returns, so a missing image is a state to render, not a reason to block.
  */
-export default function PlatePage({ page, total, effect, image, onOpenChain }: Props) {
+export default function PlatePage({ page, effect, image, onOpenChain }: Props) {
   const blob = image?.blob ?? null;
-  const url = useMemo(() => (blob ? URL.createObjectURL(blob) : null), [blob]);
+  // Created and revoked by the same effect. A memoised URL revoked in an
+  // effect cleanup broke in development: Strict Mode runs the cleanup once on
+  // mount, the memo is not recomputed, and the picture showed its alt text.
+  const [url, setUrl] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!url) return;
-    return () => URL.revokeObjectURL(url);
-  }, [url]);
+    if (!blob) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setUrl(null);
+      return;
+    }
+    const next = URL.createObjectURL(blob);
+    setUrl(next);
+    return () => URL.revokeObjectURL(next);
+  }, [blob]);
 
   const status = image?.status ?? 'pending';
 
@@ -46,10 +53,6 @@ export default function PlatePage({ page, total, effect, image, onOpenChain }: P
         ) : (
           <PlateAbsence status={status} />
         )}
-
-        <p className="mono absolute left-3 top-3 text-[var(--text)] mix-blend-difference">
-          plate {String(page.index).padStart(2, '0')} / {total}
-        </p>
 
         {/* Desktop: the band sits over the quiet lower third.
 
@@ -84,23 +87,22 @@ export default function PlatePage({ page, total, effect, image, onOpenChain }: P
       </p>
 
       {/* The order/domain/shotType labels used to sit here on every plate —
-          reading-order chrome that reinforced the deck feel this rework exists
-          to remove. That taxonomy still lives in the chapter, the export and
-          the diagram; here it is reduced to a quiet, unlabelled way back to the
-          reasoning node this page came from. */}
+          reading-order chrome that reinforced the deck feel. That taxonomy
+          still lives in the chapter, the export and the diagram; here it is
+          one plainly worded way back to the reasoning this page came from. */}
       {effect && (
-        <div className="mt-3 flex w-full justify-start px-1" style={{ maxWidth: 'var(--plate-max)' }}>
+        <div className="mt-2 flex w-full justify-start" style={{ maxWidth: 'var(--plate-max)' }}>
           <button
             type="button"
             onClick={() => onOpenChain(effect.id)}
-            aria-label={`See how this page follows from the chain (${effect.domain})`}
-            className="group rounded-full p-1 transition-opacity opacity-50 hover:opacity-100"
+            className="btn-quiet gap-2 text-[0.95rem] no-underline hover:underline"
           >
             <span
               aria-hidden
               className="block h-2 w-2 rounded-full"
               style={{ background: DOMAIN_COLOUR[effect.domain] }}
             />
+            Why is the world like this?
           </button>
         </div>
       )}
@@ -120,9 +122,9 @@ function PlateAbsence({ status }: { status: StoredImage['status'] }) {
               'repeating-linear-gradient(45deg, var(--hair) 0 2px, transparent 2px 9px)',
           }}
         />
-        <p className="mono text-[var(--dim)]">plate withheld</p>
-        <p className="max-w-xs text-sm leading-relaxed text-[var(--dimmer)]">
-          The image service refused this prompt. The rest of the chapter is unaffected.
+        <p className="text-[1.05rem] text-[var(--dim)]">No picture for this page</p>
+        <p className="max-w-xs text-[0.95rem] leading-relaxed text-[var(--dimmer)]">
+          The drawing service wouldn’t draw this one. The rest of the book is fine.
         </p>
       </div>
     );
@@ -131,18 +133,18 @@ function PlateAbsence({ status }: { status: StoredImage['status'] }) {
   if (status === 'failed') {
     return (
       <div className="flex h-full w-full flex-col items-center justify-center gap-3 p-8 text-center">
-        <p className="mono text-[var(--dim)]">plate failed</p>
-        <p className="max-w-xs text-sm leading-relaxed text-[var(--dimmer)]">
-          Generation stopped before this plate was made. Resume from the library when quota returns.
+        <p className="text-[1.05rem] text-[var(--dim)]">This picture isn’t drawn yet</p>
+        <p className="max-w-xs text-[0.95rem] leading-relaxed text-[var(--dimmer)]">
+          Drawing stopped before reaching this page. The bar at the top says when it can carry on.
         </p>
       </div>
     );
   }
 
   return (
-    <div className="pending-shimmer flex h-full w-full items-end justify-start p-5">
-      <p className="mono text-[var(--dimmer)]">
-        {status === 'generating' ? 'drawing' : 'awaiting plate'}
+    <div className="pending-shimmer flex h-full w-full items-start justify-start p-5">
+      <p className="text-[0.98rem] text-[var(--dim)]">
+        {status === 'generating' ? 'Drawing this picture…' : 'Picture not drawn yet'}
       </p>
     </div>
   );

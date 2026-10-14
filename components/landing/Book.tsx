@@ -169,9 +169,9 @@ function TopAction({ progress, unit }: { progress: MotionValue<number>; unit: nu
     <motion.div style={{ opacity, y, pointerEvents }} className="absolute right-[4vw] top-7 z-40">
       <a
         href="/library"
-        className="mono border border-[var(--hair-bright)] px-4 py-2.5 text-[var(--dim)] transition-colors hover:border-[var(--lf-ochre)] hover:text-[var(--text)]"
+        className="btn bg-[var(--ink)]"
       >
-        open the atlas
+        Make a book →
       </a>
     </motion.div>
   );

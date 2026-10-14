@@ -1,16 +1,17 @@
 'use client';
 
+import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import RuleComposer from './RuleComposer';
-import { deleteEverything, deleteWorld, listChapters, listImages, storageEstimate } from '@/lib/db';
+import { deleteEverything, deleteWorld, listChapters, listImages } from '@/lib/db';
 import { buildWorldExport, downloadJson, exportFilename } from '@/lib/export';
+import { fixtureChapter } from '@/fixtures/chapter-1';
 import type { StoredWorld } from '@/lib/types';
 
 interface WorldStats {
   chapters: number;
-  plates: number;
+  pages: number;
   drawn: number;
-  neurons: number;
 }
 
 interface Props {
@@ -21,22 +22,18 @@ interface Props {
   onCreated: (worldId: string) => void;
 }
 
-const number = new Intl.NumberFormat('en-GB', { maximumFractionDigits: 0 });
+const STEPS = [
+  'Type a “what if”.',
+  'Story-sim writes a short story set in that world and draws a picture for every page.',
+  'Read it like a book, one page at a time.',
+];
 
-function formatBytes(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}
+const INLINE_LINK =
+  'underline decoration-[var(--hair-bright)] underline-offset-4 transition-colors hover:text-[var(--text)] hover:decoration-[var(--accent)]';
 
 export default function Library({ worlds, onOpen, onChanged, onSeedFixture, onCreated }: Props) {
-  const [storage, setStorage] = useState({ usage: 0, quota: 0, persisted: false });
   const [confirming, setConfirming] = useState<string | null>(null);
   const [stats, setStats] = useState<Record<string, WorldStats>>({});
-
-  useEffect(() => {
-    storageEstimate().then(setStorage);
-  }, [worlds]);
 
   useEffect(() => {
     let cancelled = false;
@@ -44,16 +41,14 @@ export default function Library({ worlds, onOpen, onChanged, onSeedFixture, onCr
       const next: Record<string, WorldStats> = {};
       for (const world of worlds) {
         const chapters = await listChapters(world.id);
-        let plates = 0;
+        let pages = 0;
         let drawn = 0;
-        let neurons = 0;
         for (const chapter of chapters) {
           const images = await listImages(chapter.id);
-          plates += images.length;
+          pages += images.length;
           drawn += images.filter((image) => image.status === 'ready').length;
-          neurons += images.reduce((sum, image) => sum + (image.neuronCost || 0), 0);
         }
-        next[world.id] = { chapters: chapters.length, plates, drawn, neurons };
+        next[world.id] = { chapters: chapters.length, pages, drawn };
       }
       if (!cancelled) setStats(next);
     })();
@@ -75,168 +70,150 @@ export default function Library({ worlds, onOpen, onChanged, onSeedFixture, onCr
   }
 
   return (
-    <div className="mx-auto min-h-dvh w-full max-w-4xl px-5 py-10 sm:px-8 sm:py-16">
-      <header className="mb-8">
-        <h1 className="display text-4xl leading-none text-[var(--text)] sm:text-6xl">
+    <div className="mx-auto min-h-dvh w-full max-w-3xl px-5 py-10 sm:px-8 sm:py-16">
+      <header className="mb-10">
+        <Link href="/" className="display text-4xl leading-none text-[var(--text)] sm:text-5xl">
           Story-sim
-        </h1>
-        <p className="mt-3 max-w-lg text-[1.05rem] leading-relaxed text-[var(--dim)]">
+        </Link>
+        <p className="mt-3 max-w-lg text-[1.15rem] leading-relaxed text-[var(--dim)]">
           Change one rule of reality. Read the world that results.
         </p>
-      </header>
-
-      <div className="mb-14">
-        <RuleComposer target={{ mode: 'new' }} onDone={onCreated} />
-      </div>
-
-      <div className="mb-6 flex flex-wrap items-baseline justify-between gap-x-6 gap-y-2 border-b border-[var(--hair)] pb-2">
-        <h2 className="mono text-[var(--dim)]">worlds</h2>
-        <p className="mono text-[var(--dimmer)]">
-          {formatBytes(storage.usage)} stored
-          {storage.quota > 0 && ` of ${formatBytes(storage.quota)}`}
-          {' · '}
-          {storage.persisted ? 'persistent' : 'evictable'}
-        </p>
-      </div>
-
-      {worlds.length === 0 ? (
-        <div className="border border-dashed border-[var(--hair)] px-6 py-14 text-center">
-          <p className="text-[1.05rem] leading-relaxed text-[var(--dim)]">
-            No worlds yet.
-          </p>
-          <p className="mx-auto mt-2 max-w-sm text-sm leading-relaxed text-[var(--dimmer)]">
-            Type a rule above to build one, or load the fixture world to read a finished
-            chapter without spending quota.
-          </p>
-          <button
-            type="button"
-            onClick={onSeedFixture}
-            className="mono mt-6 border border-[var(--hair-bright)] px-4 py-2 text-[var(--text)] transition-colors hover:bg-[var(--raised)]"
-          >
-            load fixture world
-          </button>
-        </div>
-      ) : (
-        <ul className="divide-y divide-[var(--hair)]">
-          {worlds.map((world) => (
-            <li key={world.id} className="flex flex-wrap items-center gap-x-6 gap-y-3 py-5">
-              <div className="min-w-0 flex-1">
-                <button
-                  type="button"
-                  onClick={() => onOpen(world.id)}
-                  className="display block text-left text-2xl text-[var(--text)] transition-colors hover:text-[var(--accent)]"
-                >
-                  {world.title}
-                </button>
-                <p className="mono mt-1 truncate text-[var(--dimmer)]">
-                  {world.worldCanon.activeRules.map((r) => r.rule).join(' · ')}
-                </p>
-                {stats[world.id] && (
-                  <p className="mono mt-1 text-[var(--dimmer)]">
-                    {stats[world.id].chapters} chapter{stats[world.id].chapters === 1 ? '' : 's'} ·{' '}
-                    {stats[world.id].drawn}/{stats[world.id].plates} plates drawn
-                    {stats[world.id].neurons > 0 &&
-                      ` · ${number.format(stats[world.id].neurons)} neurons`}
-                  </p>
-                )}
-              </div>
-
-              <div className="flex items-center gap-4">
-                <div className="flex" aria-hidden title="This world's frozen palette">
-                  {world.palette.map((colour) => (
-                    <span key={colour} className="h-4 w-2" style={{ background: colour }} />
-                  ))}
-                </div>
-                <button
-                  type="button"
-                  onClick={async () => downloadJson(exportFilename(world.title), await buildWorldExport(world))}
-                  className="mono text-[var(--dimmer)] transition-colors hover:text-[var(--text)]"
-                  title="Canon, chain, pages, prompts and seeds. Images excluded."
-                >
-                  export
-                </button>
-                <button
-                  type="button"
-                  onClick={() => onOpen(world.id)}
-                  className="mono border border-[var(--hair)] px-3 py-1.5 text-[var(--dim)] transition-colors hover:border-[var(--hair-bright)] hover:text-[var(--text)]"
-                >
-                  open
-                </button>
-                {confirming === world.id ? (
-                  <span className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => remove(world.id)}
-                      className="mono border border-[#d96a5b] px-3 py-1.5 text-[#d96a5b] transition-colors hover:bg-[#d96a5b] hover:text-[var(--ink)]"
-                    >
-                      delete for good
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setConfirming(null)}
-                      className="mono text-[var(--dimmer)] hover:text-[var(--text)]"
-                    >
-                      keep
-                    </button>
-                  </span>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => setConfirming(world.id)}
-                    className="mono text-[var(--dimmer)] transition-colors hover:text-[#d96a5b]"
-                  >
-                    delete
-                  </button>
-                )}
-              </div>
+        <ol className="mt-7 grid gap-3 sm:grid-cols-3 sm:gap-5">
+          {STEPS.map((step, i) => (
+            <li key={step} className="flex gap-3 text-[0.98rem] leading-snug text-[var(--dim)]">
+              <span
+                aria-hidden
+                className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-[var(--hair-bright)] text-[0.9rem] text-[var(--text)]"
+              >
+                {i + 1}
+              </span>
+              <span className="pt-0.5">{step}</span>
             </li>
           ))}
-        </ul>
+        </ol>
+      </header>
+
+      <RuleComposer target={{ mode: 'new' }} onDone={onCreated} />
+
+      {/* Reading the example costs nothing, so it is offered to everyone — not
+          only on an empty shelf, where a first-time visitor would have to find
+          it below the fold. Hidden once it is already on the shelf. */}
+      {!worlds.some((world) => world.title === fixtureChapter.worldTitle) && (
+        <p className="mt-5 text-[1rem] text-[var(--dim)]">
+          Not sure yet?{' '}
+          <button type="button" onClick={onSeedFixture} className="btn-quiet">
+            Read an example book first
+          </button>
+        </p>
       )}
 
-      <footer className="mt-14 flex flex-wrap items-center justify-between gap-4 border-t border-[var(--hair)] pt-5">
-        <p className="mono max-w-md leading-relaxed text-[var(--dimmer)]">
-          worlds live only in this browser. deleting one cannot be undone.
+      <section className="mt-16" aria-labelledby="your-worlds">
+        <h2 id="your-worlds" className="display mb-2 text-2xl text-[var(--text)]">
+          Your books
+        </h2>
+        <p className="mb-6 text-[0.98rem] leading-relaxed text-[var(--dimmer)]">
+          Each book is a world you can keep adding chapters to.
         </p>
-        <div className="flex items-center gap-3">
-          {worlds.length > 0 && (
+
+        {worlds.length === 0 ? (
+          <p className="rounded-2xl border border-dashed border-[var(--hair)] px-6 py-10 text-center text-[1.02rem] leading-relaxed text-[var(--dim)]">
+            Nothing here yet. The books you make will appear here.
+          </p>
+        ) : (
+          <ul className="space-y-3">
+            {worlds.map((world) => {
+              const stat = stats[world.id];
+              const unfinished = stat && stat.drawn < stat.pages;
+              return (
+                <li
+                  key={world.id}
+                  className="rounded-2xl border border-[var(--hair)] bg-[var(--rail)] px-5 py-4 sm:px-6"
+                >
+                  <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-3">
+                    <div className="min-w-0 flex-1">
+                      <button
+                        type="button"
+                        onClick={() => onOpen(world.id)}
+                        className="display text-left text-2xl leading-tight text-[var(--text)] transition-colors hover:text-[var(--accent)]"
+                      >
+                        {world.title}
+                      </button>
+                      <p className="mt-1 text-[1rem] italic leading-snug text-[var(--dim)]">
+                        {world.worldCanon.activeRules.map((r) => `“${r.rule}”`).join(' + ')}
+                      </p>
+                    </div>
+                    <button type="button" onClick={() => onOpen(world.id)} className="btn">
+                      Read
+                    </button>
+                  </div>
+
+                  {confirming === world.id ? (
+                    <div className="mt-3 flex flex-wrap items-center gap-3 border-t border-[var(--hair)] pt-3">
+                      <p className="text-[0.98rem] text-[var(--text)]">
+                        Delete “{world.title}”? This can’t be undone.
+                      </p>
+                      <button type="button" onClick={() => remove(world.id)} className="btn btn-danger">
+                        Delete book
+                      </button>
+                      <button type="button" onClick={() => setConfirming(null)} className="btn">
+                        Keep it
+                      </button>
+                    </div>
+                  ) : (
+                    <p className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[0.95rem] text-[var(--dimmer)]">
+                      {stat && (
+                        <span>
+                          {stat.chapters} chapter{stat.chapters === 1 ? '' : 's'}
+                          {unfinished && ` · ${stat.pages - stat.drawn} pictures still to draw`}
+                        </span>
+                      )}
+                      <button
+                        type="button"
+                        onClick={async () =>
+                          downloadJson(exportFilename(world.title), await buildWorldExport(world))
+                        }
+                        className={INLINE_LINK}
+                        title="Saves the story text and how it was made as a file. Pictures aren’t included."
+                      >
+                        Download a copy
+                      </button>
+                      <button type="button" onClick={() => setConfirming(world.id)} className={INLINE_LINK}>
+                        Delete
+                      </button>
+                    </p>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </section>
+
+      <footer className="mt-16 flex flex-wrap items-center justify-between gap-4 border-t border-[var(--hair)] pt-6">
+        <p className="max-w-md text-[0.95rem] leading-relaxed text-[var(--dimmer)]">
+          Your books are saved in this browser only — no account needed. Clearing your browser
+          data will erase them.
+        </p>
+        {worlds.length > 0 &&
+          (confirming === 'all' ? (
+            <div className="flex flex-wrap items-center gap-3">
+              <p className="text-[0.95rem] text-[var(--text)]">Delete every book?</p>
+              <button type="button" onClick={removeAll} className="btn btn-danger">
+                Delete all
+              </button>
+              <button type="button" onClick={() => setConfirming(null)} className="btn">
+                Keep them
+              </button>
+            </div>
+          ) : (
             <button
               type="button"
-              onClick={onSeedFixture}
-              className="mono text-[var(--dimmer)] transition-colors hover:text-[var(--text)]"
+              onClick={() => setConfirming('all')}
+              className="btn-quiet text-[0.95rem]"
             >
-              load fixture world
+              Delete all books
             </button>
-          )}
-          {confirming === 'all' ? (
-            <>
-              <button
-                type="button"
-                onClick={removeAll}
-                className="mono border border-[#d96a5b] px-3 py-1.5 text-[#d96a5b] transition-colors hover:bg-[#d96a5b] hover:text-[var(--ink)]"
-              >
-                delete everything for good
-              </button>
-              <button
-                type="button"
-                onClick={() => setConfirming(null)}
-                className="mono text-[var(--dimmer)] hover:text-[var(--text)]"
-              >
-                keep
-              </button>
-            </>
-          ) : (
-            worlds.length > 0 && (
-              <button
-                type="button"
-                onClick={() => setConfirming('all')}
-                className="mono text-[var(--dimmer)] transition-colors hover:text-[#d96a5b]"
-              >
-                delete everything
-              </button>
-            )
-          )}
-        </div>
+          ))}
       </footer>
     </div>
   );

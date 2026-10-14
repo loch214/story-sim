@@ -88,8 +88,15 @@ export default function Home() {
   if (error) {
     return (
       <main className="mx-auto flex min-h-dvh max-w-md flex-col justify-center px-6">
-        <p className="mono mb-2 text-[#d96a5b]">storage error</p>
-        <p className="text-[1.05rem] leading-relaxed text-[var(--dim)]">{error}</p>
+        <h1 className="display mb-3 text-2xl text-[var(--text)]">Your books couldn’t be opened</h1>
+        <p className="text-[1.05rem] leading-relaxed text-[var(--dim)]">
+          Story-sim keeps your books inside this browser, and it couldn’t read them. Private or
+          incognito windows sometimes block this — try a normal window, or reload the page.
+        </p>
+        <details className="mt-5 text-[var(--dimmer)]">
+          <summary className="cursor-pointer text-[0.95rem]">Technical details</summary>
+          <p className="mt-2 text-[0.9rem] leading-relaxed">{error}</p>
+        </details>
       </main>
     );
   }
@@ -97,7 +104,7 @@ export default function Home() {
   if (!loaded) {
     return (
       <main className="flex min-h-dvh items-center justify-center">
-        <p className="mono text-[var(--dimmer)]">opening library</p>
+        <p className="text-[1.05rem] text-[var(--dimmer)]">Opening your books…</p>
       </main>
     );
   }

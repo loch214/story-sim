@@ -2,9 +2,9 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { persistNewWorld, persistNextChapter } from '@/lib/persist';
+import { BOOKS_PER_DAY } from '@/lib/quota';
 import {
   chapterResponseSchema,
-  NEURONS_PER_PLATE,
   PAGES,
   type ChapterModels,
   type PreflightMode,
@@ -31,7 +31,10 @@ type Phase =
   | { kind: 'waiting'; rule: string; mode: PreflightMode; secondsLeft: number; message: string }
   | {
       kind: 'failed';
+      /** What happened and what to do, in words for a reader. */
       title: string;
+      help: string;
+      /** The server's own words, shown folded away as technical detail. */
       message: string;
       violations?: string[];
       /** Set when the same request could succeed if sent again. */
@@ -41,9 +44,11 @@ type Phase =
 /** Failures that sending the same chapter again will not fix today. */
 const FINAL_ERRORS = new Set(['quota_exhausted', 'blocked', 'config', 'bad_request']);
 
-const EXAMPLES = ['gravity is half as strong', 'a world without women'];
-
-const number = new Intl.NumberFormat('en-GB', { maximumFractionDigits: 0 });
+const EXAMPLES = [
+  'gravity is half as strong',
+  'nobody can tell a lie',
+  'plants grow at night instead of day',
+];
 
 export default function RuleComposer({ target, onDone, onCancel }: Props) {
   const appending = target.mode === 'append';
@@ -108,7 +113,8 @@ export default function RuleComposer({ target, onDone, onCancel }: Props) {
     } catch (cause) {
       setPhase({
         kind: 'failed',
-        title: 'could not reach the classifier',
+        title: 'Couldn’t connect',
+        help: 'Story-sim couldn’t be reached. Check your internet connection and try again.',
         message: cause instanceof Error ? cause.message : 'Network error.',
       });
     }
@@ -177,7 +183,8 @@ export default function RuleComposer({ target, onDone, onCancel }: Props) {
     } catch (cause) {
       setPhase({
         kind: 'failed',
-        title: 'could not build the chapter',
+        title: 'Your book couldn’t be saved',
+        help: 'Something went wrong while finishing your book. Try again in a moment.',
         message: cause instanceof Error ? cause.message : 'Unknown error.',
       });
     }
@@ -194,11 +201,10 @@ export default function RuleComposer({ target, onDone, onCancel }: Props) {
   if (phase.kind === 'checking') {
     return (
       <Panel>
-        <p className="mono mb-3 text-[var(--accent)]">reading your rule…</p>
-        <p className="display mb-4 text-2xl text-[var(--text)]">{input.trim()}</p>
-        <p className="text-[0.95rem] leading-relaxed text-[var(--dim)]">
-          Checking that this is a rule about how reality works, and saying it back to you before
-          anything is built.
+        <Status>Reading your idea…</Status>
+        <p className="display mb-3 text-2xl text-[var(--text)]">{input.trim()}</p>
+        <p className="text-[1rem] leading-relaxed text-[var(--dim)]">
+          This takes a few seconds. Nothing is made until you say yes.
         </p>
       </Panel>
     );
@@ -211,33 +217,32 @@ export default function RuleComposer({ target, onDone, onCancel }: Props) {
       // a picture book should be told a world is being imagined, not that a
       // model is reasoning.
       <Panel>
-        <p className="mono mb-3 text-[var(--accent)]">
+        <Status>
           {waiting
-            ? 'just a moment'
+            ? 'Just a moment'
             : phase.mode === 'story'
-              ? 'telling your story…'
+              ? 'Telling your story…'
               : appending
-                ? 'changing your world…'
-                : 'imagining your world…'}
-        </p>
+                ? 'Writing the next chapter…'
+                : 'Writing your book…'}
+        </Status>
         <p className="display mb-4 text-2xl text-[var(--text)]">{phase.rule}</p>
         {waiting ? (
-          <p className="text-[0.95rem] leading-relaxed text-[var(--dim)]">
-            Too many worlds at once. Picking back up in {phase.secondsLeft}s.
+          <p className="text-[1rem] leading-relaxed text-[var(--dim)]">
+            Lots of people are making books right now. Trying again in {phase.secondsLeft} seconds.
           </p>
         ) : (
           <>
-            <p className="text-[0.95rem] leading-relaxed text-[var(--dim)]">
+            <p className="max-w-xl text-[1rem] leading-relaxed text-[var(--dim)]">
               {phase.storyKept
-                ? 'The story is already written — planning a picture for every page.'
-                : phase.mode === 'story'
-                  ? 'Writing what happens next, all the way to the end — then planning a picture for every page.'
-                  : appending
-                    ? 'Writing a new story in the world you already have — then planning a picture for every page.'
-                    : 'Writing a story set in this world — then planning a picture for every page.'}{' '}
-              This takes a minute or two.
+                ? 'The story is already written. Now planning a picture for every page.'
+                : 'First the story is written, then a picture is planned for every page.'}{' '}
+              This usually takes one to two minutes, so keep this tab open. The pictures start
+              drawing as soon as it is done.
             </p>
-            <p className="mono mt-4 text-[var(--dimmer)]">{elapsed}s elapsed</p>
+            <p className="mt-4 text-[0.95rem] tabular-nums text-[var(--dimmer)]">
+              {formatElapsed(elapsed)}
+            </p>
           </>
         )}
       </Panel>
@@ -247,172 +252,226 @@ export default function RuleComposer({ target, onDone, onCancel }: Props) {
   if (phase.kind === 'interpreted') {
     return (
       <Panel>
-        <p className="mono mb-3 text-[var(--dim)]">
-          {phase.mode === 'story'
-            ? 'read as a story to continue'
-            : phase.restated
-              ? 'read as a rule'
-              : 'interpreted as'}
+        <p className="label mb-2">
+          {phase.mode === 'story' ? 'We’ll carry on this story:' : 'We understood your idea as:'}
         </p>
-        <p className="display mb-6 text-2xl leading-snug text-[var(--text)]">{phase.rule}</p>
-        {phase.mode === 'story' && (
-          <p className="mb-5 text-[0.95rem] leading-relaxed text-[var(--dimmer)]">
-            This will be told forward as a story — {PAGES.min} to {PAGES.max} pages of what happens
-            next — rather than set in a changed world.
-          </p>
-        )}
-        <div className="flex flex-wrap gap-3">
-          <button
-            type="button"
-            onClick={() => generate(phase.rule, phase.mode)}
-            className="mono border border-[var(--hair-bright)] px-4 py-2 text-[var(--text)] transition-colors hover:bg-[var(--raised)]"
-          >
-            {/* Confirming here draws the plates too, so the cost belongs on this
-                button — it is the last point before the neurons are spent. */}
-            {appending
-              ? `write chapter ${target.chapterNumber}`
-              : phase.mode === 'story'
-                ? 'tell this story'
-                : 'build this world'}{' '}
-            · up to {number.format(PAGES.max * NEURONS_PER_PLATE)} neurons
+        <p className="display mb-4 text-2xl leading-snug text-[var(--text)] sm:text-3xl">
+          {phase.rule}
+        </p>
+        <p className="mb-6 max-w-xl text-[1rem] leading-relaxed text-[var(--dim)]">
+          {phase.mode === 'story'
+            ? `You’ll get a ${PAGES.min}–${PAGES.max} page picture book of what happens next.`
+            : appending
+              ? `You’ll get chapter ${target.chapterNumber}: a new ${PAGES.min}–${PAGES.max} page story in this same world, drawn in the same style.`
+              : `You’ll get a ${PAGES.min}–${PAGES.max} page picture book set in a world where this is true.`}
+        </p>
+        <div className="flex flex-wrap items-center gap-3">
+          <button type="button" onClick={() => generate(phase.rule, phase.mode)} className="btn-primary">
+            {appending ? `Yes, write chapter ${target.chapterNumber}` : 'Yes, make my book'}
           </button>
-          <button type="button" onClick={reset} className="mono px-2 py-2 text-[var(--dimmer)] hover:text-[var(--text)]">
-            edit the rule
+          <button type="button" onClick={reset} className="btn">
+            Change it
           </button>
         </div>
+        {/* Confirming here draws the pictures too, so the cost is stated here —
+            it is the last point before the day's shared allowance is spent. */}
+        <p className="mt-5 max-w-xl text-[0.95rem] leading-relaxed text-[var(--dimmer)]">
+          Free to make. The pictures come from a shared daily allowance of about {BOOKS_PER_DAY}{' '}
+          books for everyone, and this uses one of today’s.
+        </p>
       </Panel>
     );
   }
 
   if (phase.kind === 'rejected' || phase.kind === 'failed') {
     const isRejection = phase.kind === 'rejected';
+    const canRetry = !isRejection && phase.retry !== undefined;
     return (
       <Panel tone="alert">
-        <p className="mono mb-3 text-[#d96a5b]">{isRejection ? 'not a rule' : phase.title}</p>
-        <p className="text-[1rem] leading-relaxed text-[var(--dim)]">
-          {isRejection ? phase.reason : phase.message}
+        <p className="display mb-3 text-2xl text-[var(--text)]">
+          {isRejection ? 'That doesn’t work as a “what if” yet' : phase.title}
+        </p>
+        <p className="max-w-xl text-[1rem] leading-relaxed text-[var(--dim)]">
+          {isRejection ? phase.reason : phase.help}
         </p>
         {isRejection && (
-          <p className="mt-4 text-[0.95rem] leading-relaxed text-[var(--dimmer)]">
-            A rule changes how reality works, not how the book looks. Try{' '}
-            {EXAMPLES.map((example, i) => (
-              <span key={example}>
-                {i > 0 && ' or '}
-                <button
-                  type="button"
-                  onClick={() => {
-                    setInput(example);
-                    reset();
-                  }}
-                  className="text-[var(--text)] underline underline-offset-4"
-                >
-                  {example}
-                </button>
-              </span>
-            ))}
-            .
-          </p>
-        )}
-        {!isRejection && phase.violations && (
-          <ul className="mono mt-4 space-y-1 text-[var(--dimmer)]">
-            {phase.violations.slice(0, 6).map((violation) => (
-              <li key={violation}>{violation}</li>
-            ))}
-          </ul>
+          <div className="mt-5">
+            <p className="label mb-2">Try one of these instead:</p>
+            <div className="flex flex-wrap gap-2">
+              <Examples
+                onPick={(example) => {
+                  setInput(example);
+                  reset();
+                }}
+              />
+            </div>
+          </div>
         )}
         {!isRejection && phase.retry?.storyKept && (
-          <p className="mt-4 text-[0.95rem] leading-relaxed text-[var(--dimmer)]">
-            The story itself was written and is kept. Trying again only redoes the picture planning.
+          <p className="mt-4 max-w-xl text-[1rem] leading-relaxed text-[var(--dim)]">
+            Good news: your story was written and is saved. Trying again only redoes the picture plan.
           </p>
         )}
-        <div className="mt-6 flex flex-wrap gap-3">
-          {!isRejection && phase.retry && (
+        <div className="mt-6 flex flex-wrap items-center gap-3">
+          {canRetry && (
             <button
               type="button"
               onClick={() => phase.retry && generate(phase.retry.rule, phase.retry.mode)}
-              className="mono border border-[var(--hair-bright)] px-4 py-2 text-[var(--text)] transition-colors hover:bg-[var(--raised)]"
+              className="btn-primary"
             >
-              try again
+              Try again
             </button>
           )}
-          <button
-            type="button"
-            onClick={reset}
-            className="mono border border-[var(--hair)] px-4 py-2 text-[var(--dim)] transition-colors hover:border-[var(--hair-bright)] hover:text-[var(--text)]"
-          >
-            try another rule
+          <button type="button" onClick={reset} className={canRetry ? 'btn' : 'btn-primary'}>
+            {isRejection ? 'Write a different idea' : 'Start over'}
           </button>
         </div>
+        {/* The server's own words and the validator's list are for whoever is
+            debugging, not for the reader — kept, but folded away. */}
+        {!isRejection && (phase.message || phase.violations?.length) ? (
+          <details className="mt-6 text-[var(--dimmer)]">
+            <summary className="cursor-pointer text-[0.95rem] hover:text-[var(--dim)]">
+              Technical details
+            </summary>
+            <div className="mt-3 space-y-2 text-[0.9rem] leading-relaxed">
+              {phase.message && <p>{phase.message}</p>}
+              {phase.violations && (
+                <ul className="list-disc space-y-1 pl-5">
+                  {phase.violations.slice(0, 6).map((violation) => (
+                    <li key={violation}>{violation}</li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </details>
+        ) : null}
       </Panel>
     );
   }
 
   return (
     <form onSubmit={check} className={panelClass()}>
-      <label htmlFor="rule" className="mono mb-3 block text-[var(--dim)]">
-        {appending ? `add rule ${target.chapterNumber} to this world` : 'change one rule of reality'}
+      <label htmlFor="rule" className="display mb-1 block text-2xl text-[var(--text)] sm:text-3xl">
+        {appending ? 'What changes next in this world?' : 'What if…'}
       </label>
+      <p className="mb-5 max-w-xl text-[1rem] leading-relaxed text-[var(--dim)]">
+        {appending
+          ? 'Add one more change. The new chapter keeps everything that has happened so far, and the same drawing style.'
+          : 'Change one thing about how the world works, and get an illustrated picture book about life there.'}
+      </p>
       <input
         id="rule"
         value={input}
         onChange={(event) => setInput(event.target.value)}
         maxLength={300}
         autoFocus={appending}
-        placeholder={appending ? 'gravity behaves normally again' : EXAMPLES[0]}
-        className="display w-full border-b border-[var(--hair-bright)] bg-transparent pb-3 text-2xl text-[var(--text)] outline-none placeholder:text-[var(--dimmer)] focus:border-[var(--accent)] sm:text-3xl"
+        placeholder={appending ? 'Type the next change here' : 'Type your idea here'}
+        className="display w-full rounded-xl border border-[var(--hair-bright)] bg-[var(--ink)] px-4 py-3.5 text-xl text-[var(--text)] outline-none transition-colors placeholder:text-[var(--dimmer)] focus:border-[var(--accent)] sm:text-2xl"
       />
-      <div className="mt-5 flex flex-wrap items-center gap-4">
+      {!appending && (
+        <div className="mt-4 flex flex-wrap items-center gap-2">
+          <span className="mr-1 text-[0.95rem] text-[var(--dimmer)]">Or try:</span>
+          <Examples onPick={setInput} />
+        </div>
+      )}
+      <div className="mt-6 flex flex-wrap items-center gap-x-4 gap-y-3">
         {/* No disabled/"reading" state needed here any more: `checking` renders
             its own panel in place of this form. */}
-        <button
-          type="submit"
-          disabled={!input.trim()}
-          className="mono border border-[var(--hair-bright)] px-4 py-2 text-[var(--text)] transition-colors hover:bg-[var(--raised)] disabled:cursor-not-allowed disabled:border-[var(--hair)] disabled:text-[var(--dimmer)]"
-        >
-          read the rule
+        <button type="submit" disabled={!input.trim()} className="btn-primary">
+          Continue
         </button>
         {onCancel && (
-          <button type="button" onClick={onCancel} className="mono text-[var(--dimmer)] hover:text-[var(--text)]">
-            cancel
+          <button type="button" onClick={onCancel} className="btn">
+            Cancel
           </button>
         )}
-        <p className="mono text-[var(--dimmer)]">
-          {appending ? 'the world keeps its look and its history' : `one rule · ${PAGES.min}–${PAGES.max} plates`}
+        <p className="text-[0.95rem] text-[var(--dimmer)]">
+          You’ll see what we understood before anything is made.
         </p>
       </div>
     </form>
   );
 }
 
+function Examples({ onPick }: { onPick: (example: string) => void }) {
+  return (
+    <>
+      {EXAMPLES.map((example) => (
+        <button
+          key={example}
+          type="button"
+          onClick={() => onPick(example)}
+          className="rounded-full border border-[var(--hair)] px-3 py-1 text-[0.95rem] text-[var(--dim)] transition-colors hover:border-[var(--accent)] hover:text-[var(--text)]"
+        >
+          {example}
+        </button>
+      ))}
+    </>
+  );
+}
+
+function Status({ children }: { children: React.ReactNode }) {
+  return (
+    <p className="mb-3 flex items-center gap-2.5 text-[1rem] text-[var(--accent)]" role="status">
+      <span aria-hidden className="block h-2 w-2 animate-pulse rounded-full bg-[var(--accent)]" />
+      {children}
+    </p>
+  );
+}
+
+function formatElapsed(seconds: number): string {
+  if (seconds < 60) return `${seconds} seconds so far`;
+  return `${Math.floor(seconds / 60)} min ${seconds % 60} s so far`;
+}
+
 const panelClass = (tone?: 'alert') =>
-  `border px-6 py-8 ${tone === 'alert' ? 'border-[#d96a5b]/40' : 'border-[var(--hair)]'} bg-[var(--rail)]`;
+  `rounded-2xl border px-6 py-7 sm:px-8 sm:py-8 ${tone === 'alert' ? 'border-[#d96a5b]/40' : 'border-[var(--hair)]'} bg-[var(--rail)]`;
 
 function Panel({ children, tone }: { children: React.ReactNode; tone?: 'alert' }) {
   return <section className={panelClass(tone)}>{children}</section>;
 }
 
+/**
+ * What went wrong, said for a reader rather than a developer. The server's
+ * message is kept for the "technical details" fold — it names models and
+ * quotas, which is right for debugging and wrong as the headline.
+ */
 function describeFailure(body: Record<string, unknown>): Extract<Phase, { kind: 'failed' }> {
-  const titles: Record<string, string> = {
-    quota_exhausted: 'daily quota gone',
-    rate_limit: 'rate limited',
-    blocked: 'declined',
-    truncated: 'response cut off',
-    malformed: 'bad response',
-    invalid_chapter: 'picture plan failed',
-    invalid_story: 'story not usable',
-    config: 'not configured',
-    overloaded: 'gemini busy',
-    upstream: 'upstream error',
-    bad_request: 'bad request',
+  const plain: Record<string, { title: string; help: string }> = {
+    quota_exhausted: {
+      title: 'No more free books today',
+      help: 'Today’s shared free allowance has been used up. It refills every day, so please come back tomorrow.',
+    },
+    rate_limit: {
+      title: 'Too many requests at once',
+      help: 'Lots of people are using Story-sim right now. Wait a minute, then try again.',
+    },
+    overloaded: {
+      title: 'The writing service is busy',
+      help: 'The service that writes the stories is overloaded right now. Wait a minute, then try again.',
+    },
+    blocked: {
+      title: 'This idea couldn’t be written',
+      help: 'The writing service declined this idea. Try wording it differently.',
+    },
+    config: {
+      title: 'Story-sim isn’t set up yet',
+      help: 'The app is missing its settings, so it can’t make books right now. Whoever runs it needs to fix this.',
+    },
+    bad_request: {
+      title: 'Something went wrong on our side',
+      help: 'Trying the same thing again won’t help. Please start over.',
+    },
   };
   const error = String(body.error ?? 'upstream');
+  const known = plain[error] ?? {
+    title: 'Something went wrong',
+    help: 'Your book couldn’t be finished this time. This is usually temporary, so try again.',
+  };
   return {
     kind: 'failed',
-    title: titles[error] ?? 'failed',
-    message:
-      typeof body.message === 'string'
-        ? body.message
-        : 'Something went wrong building this chapter.',
+    ...known,
+    message: typeof body.message === 'string' ? body.message : '',
     violations: Array.isArray(body.violations) ? (body.violations as string[]) : undefined,
   };
 }

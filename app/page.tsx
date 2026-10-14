@@ -17,15 +17,12 @@ export default function Landing() {
 
       <footer className="border-t border-[var(--hair)] px-[7vw] py-9">
         <div className="flex flex-wrap items-baseline justify-between gap-x-10 gap-y-4">
-          <p className="note max-w-[62ch]">
-            story-sim runs entirely on recurring free tiers. worlds are stored in this browser and
-            nowhere else.
+          <p className="max-w-[62ch] text-[0.98rem] leading-relaxed text-[var(--dimmer)]">
+            Story-sim is free, with no account. Your books are saved in this browser and nowhere
+            else.
           </p>
-          <Link
-            href="/library"
-            className="mono text-[var(--dim)] underline decoration-[var(--hair-bright)] underline-offset-[6px] transition-colors hover:text-[var(--text)] hover:decoration-[var(--lf-ochre)]"
-          >
-            open the atlas
+          <Link href="/library" className="btn-primary" style={{ ['--accent' as string]: 'var(--lf-ochre)' }}>
+            Make a book →
           </Link>
         </div>
       </footer>

@@ -10,6 +10,7 @@ import { buildSpreads } from './spreads';
 import { imageId, listImages, putChapter, putImage } from '@/lib/db';
 import { demoArtwork, demoSeed } from '@/lib/demoArt';
 import { chapterStatusForHalt, renderChapter, type HaltReason } from '@/lib/imageQueue';
+import { fixtureChapter } from '@/fixtures/chapter-1';
 import type { StoredChapter, StoredImage, StoredWorld } from '@/lib/types';
 
 interface Props {
@@ -65,7 +66,6 @@ export default function Reader({
     ready: plates.filter((p) => p.status === 'ready').length,
     refused: plates.filter((p) => p.status === 'refused').length,
     pending: plates.filter((p) => p.status === 'pending' || p.status === 'failed').length,
-    neurons: plates.reduce((sum, p) => sum + (p.neuronCost || 0), 0),
   };
 
   const draw = useCallback(
@@ -245,50 +245,43 @@ export default function Reader({
         touchStart.current = null;
       }}
     >
-      <header className="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-2 border-b border-[var(--hair)] px-4 py-3 sm:px-6">
-        <div className="flex items-baseline gap-4">
-          <button
-            type="button"
-            onClick={onClose}
-            className="mono text-[var(--dim)] transition-colors hover:text-[var(--text)]"
-          >
-            ← library
+      <header className="flex flex-wrap items-center justify-between gap-x-6 gap-y-2 border-b border-[var(--hair)] px-4 py-2 sm:px-6">
+        <div className="flex min-w-0 items-center gap-3 sm:gap-5">
+          <button type="button" onClick={onClose} className="btn-quiet shrink-0 no-underline hover:underline">
+            ← Your books
           </button>
-          <h1 className="display text-lg text-[var(--text)]">{world.title}</h1>
+          <h1 className="display truncate text-xl text-[var(--text)]">{world.title}</h1>
         </div>
-        <div className="flex items-center gap-4">
-          <p className="mono text-[var(--dimmer)]">
-            {chapters.length} chapter{chapters.length === 1 ? '' : 's'}
-          </p>
-          <button
-            type="button"
-            onClick={() => setComposing((open) => !open)}
-            className="mono border border-[var(--hair)] px-3 py-1.5 text-[var(--dim)] transition-colors hover:border-[var(--hair-bright)] hover:text-[var(--text)]"
-          >
-            {composing ? 'close' : 'add a rule'}
+        {!composing && (
+          <button type="button" onClick={() => setComposing(true)} className="btn">
+            + Add a chapter
           </button>
-        </div>
+        )}
       </header>
 
       {composing && (
-        <div className="border-b border-[var(--hair)] px-4 py-5 sm:px-6">
-          <RuleComposer
-            target={{ mode: 'append', world, chapterNumber: chapters.length + 1 }}
-            onCancel={() => setComposing(false)}
-            onDone={() => {
-              const chapterId = `${world.id}:${chapters.length + 1}`;
-              pendingDraw.current = chapterId;
-              setPendingSpreadKey(`${chapterId}:1`);
-              setComposing(false);
-              onImagesChanged();
-            }}
-          />
+        <div className="border-b border-[var(--hair)] px-4 py-6 sm:px-6">
+          <div className="mx-auto max-w-3xl">
+            <RuleComposer
+              target={{ mode: 'append', world, chapterNumber: chapters.length + 1 }}
+              onCancel={() => setComposing(false)}
+              onDone={() => {
+                const chapterId = `${world.id}:${chapters.length + 1}`;
+                pendingDraw.current = chapterId;
+                setPendingSpreadKey(`${chapterId}:1`);
+                setComposing(false);
+                onImagesChanged();
+              }}
+            />
+          </div>
         </div>
       )}
 
       {chapter && (
         <RenderBar
           {...counts}
+          offerSamples={world.title === fixtureChapter.worldTitle}
+          devTools={process.env.NODE_ENV !== 'production'}
           phase={isRendering ? 'rendering' : halt ? 'halted' : 'idle'}
           halt={halt}
           haltedAt={chapter.haltedAt}
@@ -312,7 +305,6 @@ export default function Reader({
         ) : spread ? (
           <PlatePage
             page={spread.page}
-            total={spread.chapter.pages.length}
             effect={spread.effect}
             image={spread.image}
             onOpenChain={(effectId) => openChain(spread.chapter.id, effectId)}
@@ -320,38 +312,70 @@ export default function Reader({
         ) : null}
       </main>
 
-      <footer className="flex flex-wrap items-center justify-between gap-x-6 gap-y-3 border-t border-[var(--hair)] px-4 py-3 sm:px-6">
-        <IndexRail
-          spreads={spreads}
-          current={current}
-          onSelect={(index) => {
-            setDiagram(null);
-            setCurrent(index);
-          }}
-        />
-        <div className="flex items-center gap-4">
-          {/* The way in to the machinery, and the only one that is a front-door
-              control. It sits beside the page count rather than in the header:
-              available, plainly labelled, and never the thing you land on. */}
-          <button
-            type="button"
-            onClick={() => (diagram ? setDiagram(null) : openChain(chapter.id))}
-            className="mono border border-[var(--hair)] px-3 py-1.5 text-[var(--dim)] transition-colors hover:border-[var(--hair-bright)] hover:text-[var(--text)]"
-          >
-            {diagram ? 'back to the plates' : 'how this world works'}
-          </button>
-          <p className="mono text-[var(--dimmer)]">
-            {diagram
-              ? `ch.${diagramChapter?.number} · reasoning`
-              : `ch.${spread?.chapter.number} · plate ${spread?.page.index}`}
-          </p>
-          {/* Which movement of the arc this plate belongs to. The pacing is
-              chosen per premise, so naming it is how the reader feels the shape
+      <footer className="grid grid-cols-[1fr_auto_1fr] items-center gap-x-4 gap-y-3 border-t border-[var(--hair)] px-4 py-3 sm:px-6">
+        {/* The spine: every page as a bar, filled once its picture exists. It
+            doubles as an at-a-glance status display, so it stays — but the
+            plainly labelled buttons beside it are the way to turn pages. */}
+        <div className="hidden min-w-0 overflow-x-auto md:block">
+          {!diagram && (
+            <IndexRail
+              spreads={spreads}
+              current={current}
+              onSelect={(index) => {
+                setDiagram(null);
+                setCurrent(index);
+              }}
+            />
+          )}
+        </div>
+
+        {diagram ? (
+          <div className="col-span-3 flex justify-center md:col-span-1 md:col-start-2">
+            <button type="button" onClick={() => setDiagram(null)} className="btn-primary">
+              ← Back to the story
+            </button>
+          </div>
+        ) : (
+          <div className="col-span-3 flex items-center justify-center gap-3 md:col-span-1 md:col-start-2">
+            <button
+              type="button"
+              onClick={() => go(-1)}
+              disabled={current === 0}
+              className="btn"
+              title="Previous page (← key)"
+            >
+              ← <span className="sr-only sm:not-sr-only">Back</span>
+            </button>
+            <p className="min-w-[7.5rem] text-center text-[0.98rem] tabular-nums text-[var(--dim)]" aria-live="polite">
+              {chapters.length > 1 && `Ch. ${spread?.chapter.number} · `}Page {spread?.page.index} of{' '}
+              {spread?.chapter.pages.length}
+            </p>
+            <button
+              type="button"
+              onClick={() => go(1)}
+              disabled={current >= spreads.length - 1}
+              className="btn-primary"
+              title="Next page (→ key)"
+            >
+              <span className="sr-only sm:not-sr-only">Next</span> →
+            </button>
+          </div>
+        )}
+
+        <div className="col-span-3 flex items-center justify-center gap-4 md:col-span-1 md:justify-end">
+          {/* Which part of the story this page belongs to. The pacing is
+              chosen per story, so naming it is how the reader feels the shape
               rather than just a row of pages. */}
           {!diagram && movement && (
-            <p className="mono hidden text-[var(--accent)] lg:block">{movement.label}</p>
+            <p className="hidden text-[0.95rem] italic text-[var(--accent)] xl:block">{movement.label}</p>
           )}
-          {!diagram && <p className="mono hidden text-[var(--dimmer)] md:block">← → to turn</p>}
+          {/* The way in to the reasoning: available, plainly labelled, and
+              never the thing you land on. */}
+          {!diagram && chapter && (
+            <button type="button" onClick={() => openChain(chapter.id)} className="btn-quiet text-[0.95rem]">
+              How this world works
+            </button>
+          )}
         </div>
       </footer>
     </div>
