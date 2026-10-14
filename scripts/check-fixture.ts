@@ -282,6 +282,36 @@ console.log(`  styleBible: ${styleBible.length}/${PROMPT_LIMITS.styleBible} char
     'A person named in the text joins the picture; a picture with nobody in it is left alone',
     `Attach wrong: ${JSON.stringify([attached.pages[0].entityRefs, attached.pages[1].entityRefs])}`,
   );
+
+  // Named but absent: "Mia was gone" over a scene of the hero alone. Neither
+  // auto-attached nor kept if the model listed her.
+  const missing = {
+    ...withMara,
+    worldCanon: {
+      ...withMara.worldCanon,
+      namedEntities: [
+        ...withMara.worldCanon.namedEntities,
+        { name: 'Mia', type: 'person' as const, visualDescription: 'a girl of ten in a yellow dress and blue boots' },
+      ],
+    },
+    pages: chapter.pages.map((p, i) =>
+      i === 0
+        ? { ...p, heroInScene: true, text: '"Mia," Nell said to the quiet wind. Mia was gone.', imagePrompt: 'The girl stands alone on a grassy hill, looking out at the wind in the long grass under an empty sky.', entityRefs: [] }
+        : i === 1
+          ? { ...p, heroInScene: true, text: 'Mia had left the code for her.', imagePrompt: 'The girl wipes her eyes beside a red iron water pump on a sunny hill.', entityRefs: ['Mia'] }
+          : i === 2
+            ? { ...p, heroInScene: true, text: 'Mia waved from the gate.', imagePrompt: 'The girl runs toward her older sister, who waves from a wooden gate in the evening light.', entityRefs: [] }
+            : p,
+    ),
+  };
+  const { chapter: absent } = normaliseChapter(missing, FIXTURE_RULE);
+  expect(
+    absent.pages[0].entityRefs.length === 0 &&
+      absent.pages[1].entityRefs.length === 0 &&
+      absent.pages[2].entityRefs.includes('Mia'),
+    'A person named but not shown stays out of the picture; one the scene shows is attached',
+    `Absent-person handling wrong: ${JSON.stringify(absent.pages.slice(0, 3).map((p) => p.entityRefs))}`,
+  );
 }
 
 // ── Arc tiling ────────────────────────────────────────────────────────────
@@ -316,6 +346,62 @@ console.log(`  styleBible: ${styleBible.length}/${PROMPT_LIMITS.styleBible} char
     chain: chapter.chain.map((e) => (e.id === 'e12' ? { ...e, derivedFrom: [{ kind: 'effect' as const, id: 'e11' }] } : e)),
   };
   expect(trips(sideways, 5), 'An order-3 entry derived from another order-3 entry is rejected', 'A sideways order-3 reference slipped past');
+}
+
+// ── Bookkeeping is repaired, not sent back ────────────────────────────────
+// A finished book was thrown away twice over e9 citing e4 — a wrong arrow in
+// a diagram the reader rarely opens. Normalisation now fixes such faults; the
+// validator above still names them for anything that skips normalisation.
+{
+  const broken: ChapterResponse = {
+    ...chapter,
+    chain: chapter.chain.map((e) =>
+      e.id === 'e9'
+        ? { ...e, derivedFrom: [{ kind: 'effect' as const, id: 'e4' }] }
+        : e.id === 'e2'
+          ? { ...e, derivedFrom: [{ kind: 'effect' as const, id: 'e7' }] }
+          : e.id === 'e12'
+            ? { ...e, derivedFrom: [{ kind: 'effect' as const, id: 'e11' }], text: Array(40).fill('word').join(' ') }
+            : e,
+    ),
+    pages: chapter.pages.map((p, i) =>
+      i === 0 ? { ...p, derivedFrom: 'e99', entityRefs: ['Nowhere', ...p.entityRefs] } : p,
+    ),
+    arc: [
+      { label: 'One two three four five six seven eight nine ten eleven twelve', fromPage: 1, toPage: 4 },
+      { label: 'b', fromPage: 6, toPage: 9 },
+      { label: 'c', fromPage: 9, toPage: 11 },
+    ],
+    worldCanon: { ...chapter.worldCanon, invariants: Array.from({ length: 12 }, (_, i) => `fact ${i}`) },
+  };
+  expect(trips(broken, 5) && trips(broken, 3) && trips(broken, 15) && trips(broken, 10), 'The broken variant trips rules 3, 5, 10 and 15 raw', 'The broken variant did not trip as built');
+  const { chapter: mended, report: mendReport } = normaliseChapter(broken, FIXTURE_RULE, { chapterNumber: 1 });
+  const left = validateChapter(mended, { chapterNumber: 1 });
+  const e9 = mended.chain.find((e) => e.id === 'e9')!;
+  expect(
+    left.length === 0 &&
+      e9.derivedFrom.some((r) => r.kind === 'effect' && ['e5', 'e6', 'e7', 'e8'].includes(r.id)) &&
+      mended.arc.at(-1)!.toPage === mended.pages.length &&
+      mendReport.repairs.length > 0,
+    `Bookkeeping faults are repaired before validation (${mendReport.repairs.length} repairs)`,
+    `Repair left: ${left.join(' | ')}`,
+  );
+
+  // Chapter 2: its own styleBible is dropped, and a chain that never touches
+  // the existing world is tied to it.
+  const prior = { ...chapter.worldCanon, liveTensions: ['the rope may not hold'] };
+  const second: ChapterResponse = {
+    ...chapter,
+    worldTitle: undefined,
+    chain: chapter.chain.map((e) => ({ ...e, derivedFrom: e.derivedFrom.filter((r) => r.kind === 'rule' || r.kind === 'effect') })),
+  };
+  const { chapter: mended2 } = normaliseChapter(second, FIXTURE_RULE, { chapterNumber: 2, priorCanon: prior });
+  const left2 = validateChapter(mended2, { chapterNumber: 2, priorCanon: prior, worldStyleBible: chapter.styleBible });
+  expect(
+    !left2.some((x) => /Rule (5|6|11)/.test(x)),
+    'Chapter 2 bookkeeping (own styleBible, untouched world) is repaired',
+    `Chapter 2 repair left: ${left2.join(' | ')}`,
+  );
 }
 
 // ── Prose is no longer policed ────────────────────────────────────────────

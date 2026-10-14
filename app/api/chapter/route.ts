@@ -28,6 +28,7 @@ export const maxDuration = 300;
 
 const STORY_MAX_OUTPUT_TOKENS = 16_384;
 const PLATES_MAX_OUTPUT_TOKENS = 32_768;
+const PLATES_ATTEMPTS = 3;
 
 /**
  * A finished story, handed back to the client when step 2 fails and sent
@@ -196,7 +197,9 @@ async function buildPlates(
   let lastViolations: string[] = [];
   let lastRaw = '';
 
-  for (let attempt = 1; attempt <= 2; attempt++) {
+  // Three attempts, not two: a fallback model answers in seconds but follows
+  // the brief loosely, and each retry carries the exact faults to fix.
+  for (let attempt = 1; attempt <= PLATES_ATTEMPTS; attempt++) {
     const result = await generateJson({
       apiKey: config.apiKey,
       models: config.chapterModels,
@@ -215,7 +218,7 @@ async function buildPlates(
             : 'The previous response was not valid JSON.',
         ];
         lastRaw = result.raw ?? '';
-        if (attempt === 1) continue;
+        if (attempt < PLATES_ATTEMPTS) continue;
       }
       const { status, body } = failureResponse(result.failure);
       return NextResponse.json({ ...body, raw: lastRaw || undefined, draft }, { status });
@@ -235,7 +238,11 @@ async function buildPlates(
       ...parsed.data,
       transitionNote: parsed.data.transitionNote?.trim() || undefined,
     };
-    const { chapter, report } = normaliseChapter(mergeChapter(plates, story, first), input.rule);
+    const { chapter, report } = normaliseChapter(mergeChapter(plates, story, first), input.rule, {
+      chapterNumber: input.chapterNumber,
+      priorCanon: input.worldCanon,
+    });
+    if (report.repairs.length > 0) console.info(`[chapter] repaired: ${report.repairs.join('; ')}`);
     const violations = validateChapter(chapter, {
       chapterNumber: input.chapterNumber,
       priorCanon: input.worldCanon,
@@ -260,7 +267,13 @@ async function buildPlates(
   }
 
   return NextResponse.json(
-    { error: 'invalid_chapter', violations: lastViolations, raw: lastRaw, draft },
+    {
+      error: 'invalid_chapter',
+      message: 'The picture plan came back with mistakes three times. Your story is kept — try again to redo only the pictures plan.',
+      violations: lastViolations,
+      raw: lastRaw,
+      draft,
+    },
     { status: 422 },
   );
 }

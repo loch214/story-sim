@@ -1,3 +1,4 @@
+import { repairBookkeeping, type RepairContext } from './repair';
 import {
   EXPLICIT_PEOPLE_PATTERN,
   PROMPT_LIMITS,
@@ -30,6 +31,10 @@ export interface NormaliseReport {
   widenedShots: number[];
   /** Recurring people named in a page's text and attached to its picture. */
   attachedPeople: { pageIndex: number; name: string }[];
+  /** Person references removed because the scene shows nobody but the hero. */
+  droppedPeople: { pageIndex: number; name: string }[];
+  /** Bookkeeping put right without asking the model. See lib/repair.ts. */
+  repairs: string[];
 }
 
 /**
@@ -46,6 +51,24 @@ const HANDS_PATTERN = /\b(?:hands?|fingers?|fingertips?|fists?|palms?|knuckles?|
 const ANYONE_PATTERN =
   /\b(?:she|her|he|him|they|person|someone|somebody|child|children|kid|baby|toddler|girl|boy|woman|man|lady)\b/i;
 const TIGHT_SHOTS = new Set(['close-up', 'detail']);
+
+/**
+ * A scene that shows somebody besides the hero, who is always "the girl" /
+ * "the boy": a person introduced with an article, number or possessive — "a
+ * woman opens the door", "her little sister", "two old men".
+ */
+const ROLE_NOUNS =
+  'officials?|clerks?|teachers?|bakers?|doctors?|nurses?|shopkeepers?|workers?|guards?|officers?|librarians?|keepers?|farmers?|vendors?|sellers?|drivers?|captains?|mayors?|queens?|kings?|strangers?|visitors?|guests?|neighbou?rs?|friends?|cousins?|aunts?|uncles?|grandmothers?|grandfathers?|grandmas?|grandpas?|crowds?|customers?|helpers?|elders?|leaders?|judges?|postwom[ae]n|fisherwom[ae]n';
+const OTHER_PERSON_PATTERN = new RegExp(
+  [
+    // "a woman", "her little sister", "two old men" — never "the girl", which is the hero
+    `\\b(?:a|an|another|two|three|four|several|her|his|their|the other)\\s+(?:[\\p{L}-]+\\s+){0,2}(?:wom[ae]n|girls?|boys?|m[ae]n|child(?:ren)?|kids?|bab(?:y|ies)|toddlers?|sisters?|brothers?|mothers?|fathers?|lad(?:y|ies)|teenagers?|persons?|people|figures?|daughters?|sons?|${ROLE_NOUNS})\\b`,
+    // "the clerk", "the welcoming official" — a role is somebody else
+    `\\bthe\\s+(?:[\\p{L}-]+\\s+){0,2}(?:${ROLE_NOUNS})\\b`,
+    '\\b(?:someone|somebody|everyone|together|side by side)\\b',
+  ].join('|'),
+  'iu',
+);
 
 function hasSomebody(page: ChapterResponse['pages'][number], scene: string): boolean {
   return (
@@ -89,9 +112,11 @@ function truncateToWords(text: string, maxWords: number): string {
 }
 
 export function normaliseChapter(
-  chapter: ChapterResponse,
+  raw: ChapterResponse,
   interpretedRule: string,
+  context: RepairContext = {},
 ): NormaliseResult {
+  const { chapter, repairs } = repairBookkeeping(raw, context);
   const strippedTokens: NormaliseReport['strippedTokens'] = [];
   const widenedShots: number[] = [];
 
@@ -100,14 +125,32 @@ export function normaliseChapter(
     (e) => e.type === 'person' && e.name.trim().toLowerCase() !== chapter.hero.role.trim().toLowerCase(),
   );
 
+  const droppedPeople: NormaliseReport['droppedPeople'] = [];
+
   const pages = chapter.pages.map((page) => {
     const { cleaned, tokens } = stripStyleVocabulary(page.imagePrompt);
     if (tokens.length > 0) strippedTokens.push({ pageIndex: page.index, tokens });
     const handsUp = TIGHT_SHOTS.has(page.shotType) && hasSomebody(page, cleaned);
     if (handsUp) widenedShots.push(page.index);
-    const entityRefs = hasSomebody(page, cleaned)
-      ? attachNamedPeople(page, people, (name) => attachedPeople.push({ pageIndex: page.index, name }))
-      : page.entityRefs;
+
+    // A recurring person's description goes into the picture only when the
+    // scene shows somebody besides the hero. "Mia was gone, like everyone else
+    // who reached ten" named her on a page whose scene was "the boy stands
+    // alone on a hill" — splicing her description in would draw her there.
+    const present = (person: NamedEntity) =>
+      new RegExp(`\\b${escapeRegExp(person.name.trim())}\\b`, 'i').test(cleaned) ||
+      (page.heroInScene ? OTHER_PERSON_PATTERN.test(cleaned) : hasSomebody(page, cleaned));
+    const kept = page.entityRefs.filter((name) => {
+      const person = people.find((p) => p.name === name);
+      if (!person || present(person)) return true;
+      droppedPeople.push({ pageIndex: page.index, name });
+      return false;
+    });
+    const entityRefs = attachNamedPeople(
+      { ...page, entityRefs: kept },
+      people.filter(present),
+      (name) => attachedPeople.push({ pageIndex: page.index, name }),
+    );
     return { ...page, imagePrompt: cleaned, entityRefs, ...(handsUp ? { shotType: 'medium' as const } : {}) };
   });
 
@@ -120,7 +163,7 @@ export function normaliseChapter(
 
   return {
     chapter: { ...chapter, pages, ...(worldTitle ? { worldTitle } : {}) },
-    report: { strippedTokens, appliedTitleFallback, widenedShots, attachedPeople },
+    report: { strippedTokens, appliedTitleFallback, widenedShots, attachedPeople, droppedPeople, repairs },
   };
 }
 

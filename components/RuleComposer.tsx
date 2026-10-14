@@ -398,7 +398,7 @@ function describeFailure(body: Record<string, unknown>): Extract<Phase, { kind: 
     blocked: 'declined',
     truncated: 'response cut off',
     malformed: 'bad response',
-    invalid_chapter: 'contract not met',
+    invalid_chapter: 'picture plan failed',
     invalid_story: 'story not usable',
     config: 'not configured',
     overloaded: 'gemini busy',
@@ -412,7 +412,7 @@ function describeFailure(body: Record<string, unknown>): Extract<Phase, { kind: 
     message:
       typeof body.message === 'string'
         ? body.message
-        : 'The chapter it built did not satisfy the contract, twice.',
+        : 'Something went wrong building this chapter.',
     violations: Array.isArray(body.violations) ? (body.violations as string[]) : undefined,
   };
 }

@@ -431,6 +431,22 @@ A retry redraws the same prompt as a different image.
 
 Applied before validation, silently, without rejecting the chapter.
 
+**Bookkeeping is repaired, not sent back** (`lib/repair.ts`). A finished book
+was thrown away twice over chain entry e9 citing e4 — a wrong arrow in a
+diagram the reader rarely opens. Faults with one unambiguous fix are put right
+and listed in the route's log: chain links (rules 5, 6), page citations (3),
+entity references (9), canon caps (10), overlong chain text, descriptions,
+hero look and scenes (13), a chapter 2+ styleBible or title (11), and arc
+tiling and labels (15). Anything that changes what the reader reads or sees —
+rules 14 (absence), 23, 24, 25, 26, a thin scene — still goes back to the
+model. The validator keeps every rule as a backstop.
+
+**A recurring person is drawn only where the scene shows them.** Their
+description is attached when the page text names them and the scene shows
+somebody besides the hero, and removed — even if the model listed it — when the
+scene shows the hero alone. "Mia was gone" over "the boy stands alone on a
+hill" would otherwise have drawn Mia there.
+
 - **Banned style vocabulary is stripped from `imagePrompt`**: `photorealistic`,
   `photo`, `3D render`, `octane`, `oil painting`, `anime`, `in the style of`.
 - **`worldTitle` empty on chapter 1** falls back to a truncated

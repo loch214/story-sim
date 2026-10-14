@@ -68,6 +68,9 @@ style.** Rules 7 and 16–22 (domain quotas, entity scattering, sentence caps,
 stiff-word lists, through-line word counts) were retired: each patched one
 symptom, together they made the model write to a checklist, and none could
 create a plot. Voice is taught in the step 1 brief. Keep it that way.
+Bookkeeping faults with one unambiguous fix — chain links, citations, caps,
+arc tiling — are repaired in `lib/repair.ts`, never sent back: a book was
+once discarded twice over one wrong arrow in the diagram.
 
 **A hero, drawn by costume.** The reader follows `hero` — a name is allowed in
 text. Pictures hold them with `hero.look` (age, build, clothes, colours, one
