@@ -2,10 +2,12 @@
 
 import { useEffect, useMemo } from 'react';
 import { DOMAIN_COLOUR } from '@/lib/domain';
-import { PAGES_PER_CHAPTER, type Effect, type Page, type StoredImage } from '@/lib/types';
+import type { Effect, Page, StoredImage } from '@/lib/types';
 
 interface Props {
   page: Page;
+  /** Pages in this chapter — twelve to fifteen, chosen by the story. */
+  total: number;
   effect?: Effect;
   image?: StoredImage;
   onOpenChain: (effectId: string) => void;
@@ -16,10 +18,10 @@ interface Props {
  * the region the composition clause reserves. On narrow screens the band moves
  * below the image rather than over it.
  *
- * Text never waits on artwork. All twelve pages exist the moment phase 1
+ * Text never waits on artwork. Every page exists the moment phase 1
  * returns, so a missing image is a state to render, not a reason to block.
  */
-export default function PlatePage({ page, effect, image, onOpenChain }: Props) {
+export default function PlatePage({ page, total, effect, image, onOpenChain }: Props) {
   const blob = image?.blob ?? null;
   const url = useMemo(() => (blob ? URL.createObjectURL(blob) : null), [blob]);
 
@@ -46,7 +48,7 @@ export default function PlatePage({ page, effect, image, onOpenChain }: Props) {
         )}
 
         <p className="mono absolute left-3 top-3 text-[var(--text)] mix-blend-difference">
-          plate {String(page.index).padStart(2, '0')} / {PAGES_PER_CHAPTER}
+          plate {String(page.index).padStart(2, '0')} / {total}
         </p>
 
         {/* Desktop: the band sits over the quiet lower third.

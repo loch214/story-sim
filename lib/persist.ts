@@ -6,7 +6,9 @@ import {
   coerceRuleType,
   wordCount,
   type ChapterMode,
+  type ChapterModels,
   type ChapterResponse,
+  type Hero,
   type NamedEntity,
   type Page,
   type StoredChapter,
@@ -15,11 +17,12 @@ import {
 } from './types';
 
 /**
- * A chapter's one-line digest, derived rather than generated: the last
- * third-order effect is the furthest the reasoning travelled, which is the most
- * useful thing to carry into the next chapter's bounded context.
+ * A chapter's one-line digest. The story pass writes a summary for exactly
+ * this; chapters from before it fall back to the last third-order effect, the
+ * furthest the reasoning travelled.
  */
 function keyOutcome(chapter: ChapterResponse): string {
+  if (chapter.summary?.trim()) return truncateWords(chapter.summary, 40);
   const deepest = [...chapter.chain].reverse().find((effect) => effect.order === 3) ?? chapter.chain.at(-1);
   const text = deepest?.text ?? '';
   const words = text.split(/\s+/);
@@ -27,7 +30,7 @@ function keyOutcome(chapter: ChapterResponse): string {
 }
 
 /**
- * Queues a chapter's twelve plates as pending. Prompts are assembled and seeds
+ * Queues a chapter's plates as pending, one per page. Prompts are assembled and seeds
  * derived here so the render pool has nothing left to decide — and the
  * styleBible passed in is always the world's frozen one, never a chapter's.
  */
@@ -39,9 +42,10 @@ async function queuePlates(
   styleBible: string,
   entities: NamedEntity[],
   visualLaws: string[],
+  hero: Hero,
 ): Promise<void> {
   for (const page of pages) {
-    const { prompt } = assembleImagePrompt(styleBible, page, entities, visualLaws);
+    const { prompt } = assembleImagePrompt(styleBible, page, entities, visualLaws, hero);
     const image: StoredImage = {
       id: imageId(chapterId, page.index),
       chapterId,
@@ -60,6 +64,7 @@ export async function persistNewWorld(
   chapter: ChapterResponse,
   rule: string,
   mode: ChapterMode = 'rule',
+  models?: ChapterModels,
 ): Promise<string> {
   const worldId = crypto.randomUUID();
   const chapterId = `${worldId}:1`;
@@ -86,7 +91,10 @@ export async function persistNewWorld(
     ruleType: coerceRuleType(chapter.ruleType, 1),
     transitionNote: chapter.transitionNote,
     diagramHints: chapter.diagramHints,
-    throughLine: chapter.throughLine,
+    hero: chapter.hero,
+    summary: chapter.summary,
+    plan: chapter.plan,
+    models,
     arc: chapter.arc,
     chain: chapter.chain,
     pages: chapter.pages,
@@ -104,6 +112,7 @@ export async function persistNewWorld(
     styleBible,
     chapter.worldCanon.namedEntities,
     chapter.worldCanon.visualLaws,
+    chapter.hero,
   );
 
   return worldId;
@@ -122,6 +131,7 @@ export async function persistNextChapter(
   rule: string,
   chapterNumber: number,
   mode: ChapterMode = 'rule',
+  models?: ChapterModels,
 ): Promise<string> {
   const chapterId = `${world.id}:${chapterNumber}`;
 
@@ -145,7 +155,10 @@ export async function persistNextChapter(
     ruleType: coerceRuleType(chapter.ruleType, chapterNumber),
     transitionNote: chapter.transitionNote,
     diagramHints: chapter.diagramHints,
-    throughLine: chapter.throughLine,
+    hero: chapter.hero,
+    summary: chapter.summary,
+    plan: chapter.plan,
+    models,
     arc: chapter.arc,
     chain: chapter.chain,
     pages: chapter.pages,
@@ -165,6 +178,7 @@ export async function persistNextChapter(
     // laws are not: a rule that reverses an earlier one has to be able to put
     // back what that rule took off the page.
     chapter.worldCanon.visualLaws,
+    chapter.hero,
   );
 
   return chapterId;

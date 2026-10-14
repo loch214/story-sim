@@ -625,7 +625,7 @@ function P12() {
 export interface LandingPlate {
   index: number;
   Scene: () => React.JSX.Element;
-  /** Verbatim from fixtures/chapter-1.ts — this is real product output. */
+  /** Verbatim from the pre-rework fixtures/chapter-1.ts (the old twelve-page chain-first output). */
   text: string;
   alt: string;
 }

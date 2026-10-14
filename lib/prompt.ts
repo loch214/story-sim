@@ -1,7 +1,11 @@
-import { IMAGE_STEPS, PROMPT_LIMITS, type NamedEntity, type Page } from './types';
+import { IMAGE_STEPS, PROMPT_LIMITS, type Hero, type NamedEntity, type Page } from './types';
 
-export const COMPOSITION_CLAUSE =
-  'composition: primary subject in upper two-thirds, lower third uncluttered';
+/**
+ * The text band sits over the lower third — without this Flux centres the
+ * subject and the scrim covers the thing worth seeing. Shortened with the
+ * rework: every character here is one the encoder might not reach.
+ */
+export const COMPOSITION_CLAUSE = 'main subject in the upper two-thirds, quiet lower third';
 
 const SEPARATOR = ' | ';
 
@@ -13,19 +17,31 @@ export interface AssembledPrompt {
 }
 
 /**
- * The scene leads every image prompt; the styleBible follows it, and the
- * entity descriptions are spliced in by us, verbatim from canon, so chapter
- * 3's tower is the same tower as chapter 1's. The model never rewrites them.
+ * Order is priority, because Flux reads only the first ~256 tokens and weights
+ * the earliest heaviest:
  *
- * The composition clause exists because the text band sits over the lower
- * third — without it Flux centres the subject and the scrim covers the thing
- * worth seeing. See docs/SCHEMA.md § Image prompt assembly.
+ *   1. the scene — the only thing that differs between plates, and the part
+ *      that says what is happening on this page
+ *   2. the hero's look, when they are on the page — right after the scene that
+ *      mentions them, so the description binds to them
+ *   3. any recurring person on the page (the little sister), verbatim from
+ *      canon — a person, like the hero, is held by costume
+ *   4. the visual laws — what is always true on screen; early enough that
+ *      nothing can clip them (they used to sit ~1,300 characters in)
+ *   5. the named place or object, verbatim from canon
+ *   6. shot, styleBible, composition — the parts that can lose a few words at
+ *      the tail without the picture contradicting the story
+ *
+ * The entity descriptions and the hero's look are spliced in by us, verbatim,
+ * so chapter 3's tower is chapter 1's tower and page 9's girl wears page 2's
+ * coat. The model never rewrites them. See docs/SCHEMA.md § Image prompt assembly.
  */
 export function assembleImagePrompt(
   styleBible: string,
   page: Page,
   canonEntities: NamedEntity[],
   visualLaws: string[] = [],
+  hero?: Hero,
 ): AssembledPrompt {
   const byName = new Map(canonEntities.map((e) => [e.name, e]));
   const entities = page.entityRefs
@@ -39,22 +55,22 @@ export function assembleImagePrompt(
   let kept = [...entities];
 
   const laws = visualLaws.slice(0, PROMPT_LIMITS.visualLawsPerPrompt).join('; ');
+  const heroLook = page.heroInScene && hero ? hero.look : '';
 
-  // The laws are stated ONCE. They were spliced twice while rule fidelity was
-  // unproven; with fidelity holding, the second copy was costing ~230
-  // characters the scene needed more.
-  //
-  // Scene first: diffusion models weight leading tokens heaviest, and the
-  // scene is the only thing distinguishing one plate from the next — every
-  // plate in a chapter shares the styleBible and the laws verbatim. When the
-  // shared prefix led the prompt, every image looked the same regardless of
-  // how varied the scenes underneath it were.
+  const describe = (people: boolean) =>
+    kept
+      .filter((e) => (e.type === 'person') === people)
+      .map((e) => e.visualDescription)
+      .join('; ');
+
   const build = () =>
     [
       scene,
-      `${page.shotType} shot`,
-      kept.map((e) => e.visualDescription).join('; '),
+      heroLook,
+      describe(true),
       laws,
+      describe(false),
+      `${page.shotType} shot`,
       styleBible,
       COMPOSITION_CLAUSE,
     ]
@@ -62,25 +78,22 @@ export function assembleImagePrompt(
       .join(SEPARATOR);
 
   // Truncation order is fixed so the same page always assembles the same way:
-  // entity descriptions from the end backwards, then the scene at a word
-  // boundary. The styleBible is never trimmed — a styleBible that varies
-  // between pages defeats the mechanism it exists to serve. Neither are the
-  // visual laws: they are the only thing carrying the rule into the image, so
-  // dropping them to save characters would defeat the point of having them.
-  while (build().length > PROMPT_LIMITS.total && kept.length > 0) {
-    const dropped = kept[kept.length - 1];
+  // places and objects first, then people, then the scene at a word boundary.
+  // The caps are set so none of it normally happens. The styleBible, laws and
+  // hero look are never trimmed — each exists to be identical on every plate.
+  while (build().length > PROMPT_LIMITS.assembled && kept.length > 0) {
+    const thing = kept.findLast((e) => e.type !== 'person');
+    const dropped = thing ?? kept[kept.length - 1];
     droppedEntities.push(dropped.name);
-    kept = kept.slice(0, -1);
+    kept = kept.filter((e) => e !== dropped);
   }
 
-  if (build().length > PROMPT_LIMITS.total) {
-    const overflow = build().length - PROMPT_LIMITS.total;
+  if (build().length > PROMPT_LIMITS.assembled) {
     const words = scene.split(/\s+/);
-    while (words.length > 1 && scene.length > overflow) {
+    while (words.length > 1 && build().length > PROMPT_LIMITS.assembled) {
       words.pop();
       scene = words.join(' ');
       sceneTruncated = true;
-      if (build().length <= PROMPT_LIMITS.total) break;
     }
   }
 

@@ -2,7 +2,7 @@ import { putImage } from './db';
 import type { StoredChapter, StoredImage } from './types';
 
 /**
- * The client-side render pool. Twelve independent HTTP requests, three at a
+ * The client-side render pool. One independent HTTP request per page, three at a
  * time, in reading order so plate 1 lands first.
  *
  * The transport is injectable so every halt, retry and refusal path can be

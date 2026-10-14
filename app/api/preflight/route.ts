@@ -34,7 +34,7 @@ export async function POST(request: Request) {
 
   const result = await generateJson({
     apiKey: config.apiKey,
-    model: config.preflightModel,
+    models: [config.preflightModel],
     prompt: buildPreflightPrompt(parsedRequest.data.input),
     schema: preflightSchemaForGemini,
     maxOutputTokens: 300,

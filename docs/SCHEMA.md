@@ -1,8 +1,8 @@
 # Data Contract
 
-Every type here is enforced by a Zod validator. Generation output that fails any
-rule in [Validation](#validation) is rejected and retried once with the
-violation list appended to the prompt, then fails visibly.
+Every type here is enforced by a Zod validator. A chapter is written in **two
+Gemini calls**: a story, in plain prose, then the plates and world record, as
+JSON. Each step gets one retry carrying what was wrong, then fails visibly.
 
 ## Pre-flight classifier
 
@@ -10,6 +10,7 @@ One cheap Gemini call, thinking off, before any chapter call fires.
 
 ```ts
 interface PreflightResult {
+  mode: 'rule' | 'story';
   verdict: 'valid' | 'coercible' | 'unusable';
   interpretedRule: string;   // '' when unusable
   reason: string;            // ≤20 words, shown on unusable
@@ -22,10 +23,30 @@ interface PreflightResult {
 - `unusable` — empty, gibberish, or a style request ("make it funny", "in the
   style of Ghibli"). Rejected with a nudge and two example rules.
 
+`mode` is decided **first** — the schema's `propertyOrdering` puts it ahead of
+the verdict, because without it the API writes fields alphabetically and the
+model wrote `interpretedRule` before deciding what kind of input it had.
+
 `interpretedRule` is what enters `worldCanon.activeRules` and renders on page 0.
 The raw input is never stored as the rule.
 
-## Phase 1 — chapter generation
+## Chapter generation — two steps
+
+```
+POST /api/chapter
+  ├─ step 1  buildStoryPrompt  → generateText  → parseStory      (prose)
+  └─ step 2  buildPlatesPrompt → generateJson  → platesResponseSchema
+             merge story text onto plates → normalise → validate
+```
+
+**Why two.** The single-call design asked for a twelve-node causal chain first
+and pages citing it second, under two dozen counted constraints, inside a JSON
+field. However the voice section was phrased, the skeleton was a list of
+effects and the book read like one: no plot, a new place every page, a road
+then a factory then a bridge. Writing is now done first, on its own, with
+nothing to satisfy but a page count and a format. Everything a machine needs is
+derived from the finished story afterwards, and step 2 never returns page text
+— so its retry can never damage the prose.
 
 ### Input
 
@@ -33,11 +54,11 @@ Bounded permanently. Prior prose never enters the prompt.
 
 ```ts
 interface ChapterRequest {
-  baseline: 'present-day Earth, except:';   // fixed
-  rule: string;                             // the confirmed interpretedRule
+  rule: string;                      // the confirmed interpretedRule
+  mode: 'rule' | 'story';            // default 'rule'
   chapterNumber: number;
-  styleBible?: string;        // absent for chapter 1, verbatim thereafter
-  worldCanon?: WorldCanon;    // absent for chapter 1
+  styleBible?: string;               // absent for chapter 1, verbatim thereafter
+  worldCanon?: WorldCanon;           // absent for chapter 1
   chapterDigests?: ChapterDigest[];  // absent for chapter 1
 }
 
@@ -45,65 +66,144 @@ interface ChapterDigest {
   chapter: number;
   rule: string;
   ruleType: RuleType;
-  keyOutcome: string;   // ≤30 words
+  keyOutcome: string;   // the story pass's SUMMARY, ≤40 words
 }
 ```
 
 `chapterDigests` caps at 6, oldest dropped. `worldCanon` plus digests is the
 entire memory of the world, so context is flat forever.
 
-### Output
+### Step 1 — the story
+
+Plain text, no `responseSchema`. The prompt asks for a story, not a world:
+somebody to follow (a name is allowed), something they want, something in the
+way, pages joined by *but* and *so* rather than *and then*, a turn past the
+middle, and an ending that answers the opening. In `rule` mode the change is the
+setting, and the reader learns how the world works only by watching the hero
+deal with it — two or three consequences that matter to the plot, not a survey.
+The trouble must come *from* the change: a lost-letter-in-a-snowstorm story set
+in "a world without men" read well and never used the rule after page 1. And
+every question the story raises gets answered — the same book posted its letter
+to a house "nobody has lived in for years" and ended there.
+
+The writer plans before it writes. A `PLAN` block — trouble, want, what is in
+the way, the turn, the ending, and every open question with the page that
+answers it — comes first. The reader never sees it; step 2 is given it to
+understand the story, and it is stored and exported (`plan`) so a chapter whose
+rule never mattered can be traced to a plan that never used it.
+
+```
+PLAN
+TROUBLE: <what goes wrong only because of the change>
+WANT: … IN THE WAY: … TURN: … ENDING: … QUESTIONS: …
+
+TITLE: <chapter 1 only, ≤6 words>
+SUMMARY: <one sentence of what happened>
+HERO: <who the story follows, and their age — "June, a girl of twelve">
+PAGE 1
+<text>
+PAGE 2
+<text>
+…
+```
+
+`parseStory` tolerates markdown dressing (`**PAGE 1**`, `## Page 1:`) and
+enforces only:
+
+- **12–15 pages**, numbered 1…N in order. The writer chooses N — a hard twelve
+  made endings arrive mid-scene.
+- every page **5–90 words** — wide on purpose; a page can turn on four words.
+- `SUMMARY` and `HERO` present.
+
+Failures go back to the writer as plain sentences for its one retry.
+
+### Step 2 — plates and world record
+
+JSON, against `platesSchemaFor(chapterNumber)`. The model is given the story
+verbatim and told it is final.
 
 ```ts
-interface ChapterResponse {
-  ruleType: RuleType;              // model's raw classification
-  transitionNote?: string;         // ≤40 words, required when contradictory
-  worldTitle?: string;             // chapter 1 only — ≤6 words
-  styleBible?: string;             // chapter 1 only — omitted from the schema thereafter
-  diagramHints: DiagramHints;
-  throughLine: ThroughLine;
+interface PlatesResponse {
+  ruleType: RuleType;          // model's raw classification
+  transitionNote?: string;     // ≤40 words, required when contradictory
+  styleBible?: string;         // chapter 1 only — absent from the schema thereafter
+  worldCanon: WorldCanon;      // complete replacement
+  hero: Hero;
   chain: Effect[];
-  pages: Page[];
-  worldCanon: WorldCanon;          // complete replacement
-}
-
-type RuleType = 'additive' | 'contradictory' | 'ambiguous';
-
-interface ThroughLine {
-  role: string;      // ≤6 words, unnamed — "the rope crew", never a name or face
-  headNoun: string;   // one word from role, exactly as it appears on the page
-  want: string;       // ≤15 words — what the role is trying to do across the twelve
+  arc: Movement[];
+  pages: PlateSpec[];          // Page minus `text`
+  diagramHints: DiagramHints;
 }
 ```
 
-`throughLine` is the thread a reader follows from page 1 to page 12. It exists
-because twelve independently-derived facts read as a slide deck no matter how
-plain the prose is — see § Through-line below. `headNoun` is spliced from `role`
-specifically so rule 20 can check recurrence in page text mechanically, without
-the model self-reporting where it appears.
+**Field order is the order the model thinks in**, and it is set with
+`propertyOrdering` on every object. Without it the API orders properties
+alphabetically — the old schema had the model write `pages` before
+`styleBible`, `throughLine` and `worldCanon`, so every image prompt was written
+before the visual laws it had to obey existed. Now: what kind of change → how
+pictures look → what is always on screen → who the hero is → the reasoning →
+the shape → the plates.
+
+### The merged chapter
+
+The route joins step 1's text onto step 2's plates by index. This is what the
+client receives, validates, and persists:
+
+```ts
+interface ChapterResponse {
+  ruleType: RuleType;
+  transitionNote?: string;
+  worldTitle?: string;         // chapter 1 — from TITLE
+  styleBible?: string;         // chapter 1
+  summary?: string;            // from SUMMARY; becomes the digest
+  plan?: string;               // from PLAN; review only
+  diagramHints: DiagramHints;
+  hero: Hero;
+  throughLine?: ThroughLine;   // legacy, pre-rework chapters only
+  arc: Movement[];
+  chain: Effect[];
+  pages: Page[];
+  worldCanon: WorldCanon;
+}
+
+type RuleType = 'additive' | 'contradictory' | 'ambiguous';
+```
 
 The model reports its raw classification; **the app** coerces `ambiguous →
 contradictory`. Keeping the policy in code and the honest answer in the output
 means the hedge rate is observable.
 
-Chapter 2+ requests use a schema variant with no `styleBible` and no
-`worldTitle` field at all, so regenerating either is structurally impossible
-rather than merely forbidden.
-
-`worldTitle` names the **world**, not the rule — "The Long Fall", not "Gravity
-Is Half As Strong". It is frozen alongside the styleBible and labels the world
-on the library screen. Empty or absent, it falls back to a truncated
-`interpretedRule`.
+`worldTitle` names the book, not the rule — "The Long Fall", not "Gravity Is
+Half As Strong". It is frozen alongside the styleBible. Empty, it falls back to
+a truncated `interpretedRule`.
 
 ```ts
 interface DiagramHints {
   palette: string[];   // 3–5 hex colours, drawn from the styleBible
-  motif: string;       // ≤8 words, e.g. 'hand-inked botanical margins'
+  motif: string;       // ≤8 words
 }
 ```
 
-Hints only. The app computes every coordinate — an LLM cannot measure text, so
-LLM-authored layout collides and overflows exactly when the diagram gets dense.
+Hints only. The app computes every coordinate — an LLM cannot measure text.
+
+## Hero
+
+```ts
+interface Hero {
+  role: string;   // how the text refers to them — "Nell", "the lighthouse keeper"
+  look: string;   // ≤140 chars: age, build, hair, clothes and colours, one thing carried
+  want: string;   // ≤15 words
+}
+```
+
+The reader follows somebody, so the pictures have to show the same somebody.
+`look` is spliced verbatim into every plate whose `heroInScene` is true — the
+same mechanism that makes a named tower the same tower. It describes clothes and
+silhouette, **never a face**: independent generations cannot hold a face, but
+they hold a rust-red smock and a coil of rope well enough for a picture book.
+
+Names are allowed in page text. The old rule against them came from the
+illustrator, and the illustrator is now given a costume rather than a name.
 
 ## The chain
 
@@ -118,7 +218,7 @@ type Ref =
   | { kind: 'liveTension'; index: number };   // into prior worldCanon
 
 interface Effect {
-  id: string;            // 'e1', 'e2', …
+  id: string;            // 'e1' … 'e12'
   order: 1 | 2 | 3;
   domain: Domain;
   text: string;          // ≤25 words
@@ -126,9 +226,11 @@ interface Effect {
 }
 ```
 
-Max 4 per order, so ≤12 effects. The chain is produced **before** any prose
-exists; pages are derived from it. Reversing that order produces a story rather
-than a simulation.
+Four per order. The chain is now the **analysis behind the story**, written in
+step 2 after the story exists — it feeds the "how this world works" diagram and
+the chapter 2+ brief, and is no longer the skeleton the pages hang on. In
+`story` mode it is twelve beats; in `rule` mode twelve consequences, including
+ones the story only glances at.
 
 `derivedFrom` is what makes the chapter 2+ brief enforceable: a chapter whose
 chain contains no `invariant` or `liveTension` reference never touched the
@@ -137,34 +239,36 @@ existing world, and is rejected.
 ## Pages
 
 ```ts
-type ShotType = 'wide' | 'detail' | 'diagram' | 'interior'
-              | 'aerial' | 'crowd' | 'incidental-figures';
+type ShotType = 'wide' | 'medium' | 'close-up' | 'detail' | 'interior'
+              | 'aerial' | 'crowd' | 'incidental-figures' | 'diagram';
 
 interface Page {
-  index: number;         // 1–12
-  text: string;          // 25–45 words
-  derivedFrom: string;   // Effect id
+  index: number;          // 1–N, N = 12–15
+  text: string;           // from the story pass, verbatim
+  derivedFrom: string;    // Effect id — a citation, not a running order
   shotType: ShotType;
-  imagePrompt: string;   // scene only
-  entityRefs: string[];  // names from worldCanon.namedEntities
+  heroInScene?: boolean;  // absent on pre-rework chapters
+  imagePrompt: string;    // asked 150–400 chars (rejected under 80), scene only
+  entityRefs: string[];   // ≤2 names from worldCanon.namedEntities: recurring people, then the place
   altText: string;
 }
 ```
 
-Always 12 pages, always one image each. `derivedFrom` drives the bidirectional
-page 0 ↔ page navigation and makes "derived from the most interesting
-consequences" a checkable claim rather than a hope.
+`medium` and `close-up` were added with the rework; the old list only had words
+for surveying a place. `close-up` and `detail` are for an object alone —
+normalisation turns any tight shot with a person in it into `medium`. The old values remain so stored chapters still parse.
 
-`imagePrompt` describes the scene. Style lives in the styleBible; a page that
-also specifies style fights it.
+`imagePrompt` is the picture for **this page's text** — the moment it describes,
+not a general view of the place. It opens with who is in the frame and what they
+are doing, refers to the hero by a short noun ("the girl") because their `look`
+is added automatically, names every person concretely, asks for no lettering
+(Flux renders it as gibberish), and carries no style words.
 
-**`imagePrompt` frames a situation, not a body.** Flux refuses on subject matter,
-and it refuses in bulk: the rule *humans live only 10 years* lost 10 of 12 plates,
-plate 1 to the phrase "four-year-old biological adult". A page about an unusual
-age, an injury or a death must be carried by what is happening around it — a
-school timetable, a court hearing, a retirement at nine — never by describing
-anatomy. **Not yet enforced**; it is prompt-instructed and validator-checked work
-still open in phase 8.
+**`imagePrompt` frames a situation, not a body.** Flux refuses on subject
+matter, and it refuses in bulk: the rule *humans live only 10 years* lost 10 of
+12 plates, plate 1 to the phrase "four-year-old biological adult". A page about
+an unusual age, an injury or a death must be carried by what is happening around
+it, never by describing anatomy. **Not yet enforced.**
 
 ## worldCanon
 
@@ -174,34 +278,61 @@ supersedes the previous one entirely.
 ```ts
 interface WorldCanon {
   baseline: 'present-day Earth, except:';
-  activeRules:     { rule: string; enteredChapter: number }[];        // ≤6
-  physicsDeltas:   string[];                                          // ≤6
-  invariants:      string[];                                          // ≤8
-  namedEntities:   NamedEntity[];                                     // ≤10
-  liveTensions:    string[];                                          // ≤5
-  supersededRules: { rule: string; chapterReversed: number }[];        // ≤4
+  activeRules:     { rule: string; enteredChapter: number }[];   // ≤6
+  visualLaws:      string[];                                     // ≤3, ≤70 chars
+  neverDrawn:      string[];                                     // ≤30, default []
+  physicsDeltas:   string[];                                     // ≤6
+  invariants:      string[];                                     // ≤8
+  namedEntities:   NamedEntity[];                                // ≤10
+  liveTensions:    string[];                                     // ≤5
+  supersededRules: { rule: string; chapterReversed: number }[];  // ≤4
 }
 
 interface NamedEntity {
   name: string;
-  type: 'place' | 'object' | 'institution';
-  visualDescription: string;   // ≤30 words
+  type: 'person' | 'place' | 'object' | 'institution';
+  visualDescription: string;   // asked ≤110, rejected over 140; a person's states their age
 }
 ```
 
-Two fields are load-bearing:
+**`person` entities** are the recurring characters other than the hero — the
+little sister on eight pages. Held by costume like the hero, spliced in right
+after the hero's look. Without them the sister was dressed afresh on every
+page: yellow sweater, yellow cap, then a red scarf and green coat.
 
-**`namedEntities[].visualDescription`** is the character-consistency workaround
-made concrete. Chapter 3's prompt for the same tower splices in the identical
-string written in chapter 1 — the app resolves it, the model does not rewrite
-it. Identical text reaching Flux is what makes the tower the same tower.
+**`namedEntities`** are now the people, places and objects that recur **in the story**,
+picked out of it in step 2. `visualDescription` is spliced verbatim, so chapter
+3's tower is chapter 1's tower.
 
-**`liveTensions`** is what stops later chapters drifting into disconnection. A
-new rule should preferentially interact with an existing tension rather than
-spawn unrelated consequences.
+**`liveTensions`** is what stops later chapters drifting into disconnection.
 
-Caps are enforced twice: the prompt instructs the model to drop the least
-important entry, and the validator rejects overflow outright.
+### Visual laws and `neverDrawn`
+
+Flux is given the assembled prompt and nothing else: not the rule, not the
+story. Where the prompt is silent it draws the present-day world. Two fields
+carry the rule across, and they work in opposite directions:
+
+- **`visualLaws`** say, positively, what is always on screen — "every person is
+  a woman or a girl, all ages". They are spliced into every plate. **Never
+  phrased as an absence**: there is no negative-prompt parameter, so "no men"
+  merely puts *men* in front of the model. Rule 14 rejects negations.
+- **`neverDrawn`** lists the words that would summon what the rules removed —
+  for a world without men: `man, men, boy, boys, male, father, husband, he, him,
+  his…`. It is **never sent to the illustrator**. It exists so the validator can
+  prove no field that does reach Flux contains one (rule 23). A single "his" in
+  one scene was enough to put a man on that plate.
+
+Where `neverDrawn` contains a word for a kind of person, the rule has changed
+*who exists*, and rule 24 also rejects vague people words — "commuters",
+"workers", "a crowd" — unless the same prompt says who they are. Flux fills a
+vague word from today's world.
+
+Both live in `worldCanon`, not with the frozen styleBible, so a later rule can
+put back what an earlier one took off the page.
+
+**`priorCanon` is provenance, not accumulation.** A chapter's chain holds
+`invariant` and `liveTension` references by *index* into the canon that existed
+when it was generated, so the chapter keeps a snapshot of it.
 
 ## The image endpoint
 
@@ -215,127 +346,77 @@ Spike 0. The entire input surface is:
 | ~~`seed`~~ | **removed from the schema — sending it is a 400** |
 
 `seed` was accepted in Spike 0 and is not accepted now. Any request carrying it
-returns `400` code `5006`, *"Additional or unevaluated properties '/seed' at '/'
-not allowed"*. Re-verified live 2026-08-14. See PLAN.md § Known issues — this
-cost ten plates before it was identified.
+returns `400` code `5006`. See PLAN.md § Known issues — this cost ten plates
+before it was identified.
 
 There is **no width or height parameter**. Output is **1024×1024 JPEG**, base64
-in `result.image`, about 228 KB decoded. Pages are therefore 1:1, and the text
-band sits over the lower third — exactly the region the composition clause
-reserves, so the layout needed no adjustment.
-
-```jsonc
-// 200
-{ "result": { "image": "<base64 jpeg>", "usage": { … } },
-  "success": true, "errors": [], "messages": [] }
-
-// 400 — empty prompt
-{ "success": false, "result": {},
-  "errors": [{ "code": 5006, "message": "AiError: Bad input: …" }] }
-```
+in `result.image`. Pages are therefore 1:1, and the text band sits over the
+lower third — the region the composition clause reserves.
 
 Errors carry a numeric `code`, which is the hook the failure taxonomy branches
-on. Measured latency is 1.7–4.5s per plate, and three concurrent requests — the
-real pool width — return 200 with no rate-limit headers.
+on. Measured latency is 1.7–4.5s per plate.
 
 **Cost is reported, not estimated.** Every response carries a `cf-ai-neurons`
-header: **172.80** for one plate at 4 steps. Store that value; do not recompute
-it. The rate reconciles as `4.8 × tiles + 9.6 × tiles × steps`, steps billed per
-tile.
+header: **172.80** for one plate at 4 steps. A 15-page chapter is 2,592 neurons.
 
 ## Structured output constraints
 
 Verified against `gemini-3.6-flash`:
 
-- **`minItems` and `maxItems` are rejected.** A schema carrying them returns 400
-  `INVALID_ARGUMENT` with no field detail; the identical schema passes once they
-  are stripped. Array bounds cannot be expressed in `responseSchema`, which is
-  why every cap here is prompt-instructed *and* validator-enforced.
-- **`anyOf` works**, including nested inside array items — the `Ref`
-  discriminated union survives.
-- **Truncation is not a live risk.** A full chapter costs ~3,200 output tokens
-  plus ~4,700 thinking tokens against a 65,536 ceiling, and returns
-  `finishReason: STOP` in about 40s.
+- **`minItems` and `maxItems` are rejected** with a bare 400. Every cap is
+  prompt-instructed *and* validator-enforced.
+- **`anyOf` works**, including nested inside array items.
+- **`propertyOrdering` is accepted, and needed.** Without it properties come
+  back alphabetically. `check:fixture` fails if any object in any schema lacks
+  it, or if it differs from declaration order.
 
 ## Image prompt assembly
 
-Assembled by the app, never returned whole by the model. **Scene first** —
-diffusion models weight leading tokens heaviest, and the scene is the only part
-that differs from plate to plate:
+Assembled by the app in `lib/prompt.ts`, never returned whole by the model.
+
+**What Flux actually reads.** Cloudflare accepts 2048 characters, but the
+reference FLUX.1 [schnell] pipeline encodes at most **256 T5 tokens** — about
+1,000–1,100 characters of English — and silently drops the rest. Cloudflare's
+docs do not say whether they raise that limit; we assume they do not. The old
+assembly ran to ~1,700 characters with the visual laws ~1,300 in, which is the
+most likely reason "a world without men" kept drawing men: the law that said
+otherwise was in the part that got cut. **Order is priority:**
 
 ```
-{imagePrompt} | {shotType} shot |
-{entity visualDescriptions, joined '; '} |
-{visualLaws, joined '; '} |
-{styleBible} |
-composition: primary subject in upper two-thirds, lower third uncluttered
+{imagePrompt}                       what happens on this page
+| {hero.look}                       when heroInScene — binds to "the girl" just before it
+| {person visualDescriptions}       recurring people on this page
+| {visualLaws, joined '; '}         what is always on screen
+| {place/object visualDescription}  the named place or thing
+| {shotType} shot
+| {styleBible}
+| main subject in the upper two-thirds, quiet lower third
 ```
 
-The composition clause exists because the text band sits over the lower third.
-Without it Flux centres the subject and the scrim covers the thing worth seeing.
+If anything is clipped, it is a few words of style — never the scene, the hero,
+a recurring person or a law.
 
-### Character budget
+| Part | Cap |
+|---|---|
+| `imagePrompt` | 400 (asked ≥150, floor 80) |
+| `hero.look` | 140 |
+| visual laws | 3 × 70 asked, 90 hard |
+| entity descriptions | 2 × 110 asked, 140 hard |
+| shot type | ≤29 |
+| `styleBible` | 240 new worlds · 320 legacy |
+| composition clause | 55 |
+| **worst case** (hard caps) | **1419** new · **1499** legacy |
+| **typical** | **<1000** |
 
-2048 characters is a hard endpoint limit, so every part is capped and the total
-is checked at assembly. Rule 19 additionally requires the scene to be **at least
-40%** of the assembled prompt — see § Prompt budget below for why.
+`PROMPT_LIMITS.assembled` is 1500. Over it, assembly drops places and objects,
+then people, then trims the scene at a word boundary; the caps are set so neither normally
+happens. The styleBible, laws and hero look are never trimmed — each exists to
+be identical on every plate.
 
-| Part | Cap | Notes |
-|---|---|---|
-| `imagePrompt` | 900 | The per-page scene, and the only varying part. Also has a **floor** — see below |
-| shot type | 23 | Enum, bounded by construction |
-| entity descriptions | 2 × 110 = 220 | `entityRefs` is capped at 2 per page |
-| visual laws | 3 × 70 = 210 | |
-| `styleBible` | 320 | Frozen forever — it must fit forever |
-| composition clause | 73 | Fixed string |
-| separators | 15 | Five × `" | "` |
-| **worst case** | **1767** | 281 characters of headroom |
-
-#### The scene floor: `SCENE_CHARS_MIN`
-
-Rule 19 is a ratio, and the model never sees the assembled prompt it is a ratio
-*of*. So the floor is also stated in characters, in `lib/types.ts`, and that is
-the number `lib/prompts.ts` asks for:
-
-| Page carries | Shared parts | Scene must reach |
-|---|---|---|
-| no `entityRefs` | ~640 | ~427 |
-| one `entityRef` | ~753 | ~502 |
-| two `entityRefs` | ~866 | ~578 |
-
-`SCENE_CHARS_MIN` is 580 — the worst case rounded up, so a scene at or above it
-clears rule 19 whatever else the page carries.
-
-**Why the cap is 900 and not 650.** `imagePrompt` is the one field with both a
-cap and a floor, and the gap between them is the target the model has to hit
-blind — it cannot count its own characters. At a 650 cap a page carrying two
-`entityRefs` had to land between 578 and 650, a 72-character window, so a scene
-could follow the instruction and still miss rule 19 by a few words. Raising the
-cap to 900 widens that window to 322 while the worst-case assembled prompt only
-moves from 1517 to 1767, still 281 characters inside the 2048 endpoint limit.
-The prompt asks for 700–850: clear of the floor, clear of the cap.
-
-This was previously expressed to the model as "aim for 60% of the cap", i.e.
-390 characters. **390 cannot pass rule 19 in any configuration** — it is below
-even the no-entity floor of 427. Every page that followed the instruction
-failed the check, and because each `entityRef` adds ~110 characters of shared
-text, the pages that referenced entities failed hardest. Rules 17 and 19 then
-fired together and looked like two faults when they were one.
-
-Both violation messages are written to be repairable in one pass: rule 17 names
-the pages the entity is on, and rule 19 gives the target in characters rather
-than a percentage. A chapter gets one retry, so a violation the model cannot
-act on precisely spends it for nothing.
-
-**Truncation order** when a prompt still exceeds 2048 — deterministic, applied
-in this sequence until it fits:
-
-1. Drop entity descriptions from the end of the list backwards.
-2. Truncate `imagePrompt` at a word boundary.
-3. `styleBible` is never truncated. It is the consistency anchor; a styleBible
-   that varies between pages defeats the mechanism it exists to serve. It is
-   capped at generation instead, and a chapter whose styleBible exceeds 600
-   characters fails validation rather than being trimmed at assembly.
+The **styleBible describes how pictures are drawn, not what is in them.** The
+step 2 prompt forbids architecture, streets, vehicles and technology in it: a
+styleBible describing "impossibly tall architecture" put the same buildings in
+every plate, which is part of why every book looked like roads and bridges.
 
 ## Seeds
 
@@ -343,70 +424,84 @@ in this sequence until it fits:
 seed = fnv1a(`${worldId}:${chapterNumber}:${pageIndex}`) >>> 0
 ```
 
-Derived, and stored alongside the image — but **no longer sent**, because the
-model no longer accepts it. Determinism is therefore gone: a retry redraws the
-same prompt as a different image. The derivation is kept because it is stable
-across a cleared image store and an export/reimport round trip, and because the
-parameter may return.
+Derived and stored — but **not sent**, because the model no longer accepts it.
+A retry redraws the same prompt as a different image.
 
 ## Normalisation
 
 Applied before validation, silently, without rejecting the chapter.
 
-- **Banned style vocabulary is stripped from `imagePrompt`** and generation
-  continues: `photorealistic`, `photo`, `3D render`, `octane`, `oil painting`,
-  `anime`, `in the style of`. Style belongs to the styleBible, so a stray style
-  token is a token to remove — not 690 neurons to throw away. Log what was
-  stripped; a rising strip rate means the phase-1 prompt needs tightening.
-- **`worldTitle` empty or absent on chapter 1** falls back to a truncated
+- **Banned style vocabulary is stripped from `imagePrompt`**: `photorealistic`,
+  `photo`, `3D render`, `octane`, `oil painting`, `anime`, `in the style of`.
+- **`worldTitle` empty on chapter 1** falls back to a truncated
   `interpretedRule`.
+- **A `close-up` or `detail` shot with anybody in it becomes `medium`.** Flux
+  mangles hands, and a tight shot of someone doing something makes the hands the
+  picture. The scene rarely says "hand" ("the girl pushes the envelope into the
+  slot"), so any person counts.
+- **A recurring person named in a page's text is attached to its picture**
+  (`entityRefs`, people ahead of the place) when the picture has anyone in it.
+  "Are you Mara?" was drawn as a stranger in a bun because the model left her
+  reference off. Proper names only — "her mother's name" put the wrong mother
+  in a picture, so role words never attach.
 
 ## Validation
 
-Applied to every normalised `ChapterResponse` before persistence.
+Applied to every merged, normalised `ChapterResponse` before persistence. Every
+rule checks **structure or what reaches the illustrator**. None polices prose
+style.
 
-1. `pages.length === 12`, indices 1–12 exactly once.
-2. Every `page.text` is 25–45 words.
-3. Every `page.derivedFrom` resolves to an existing `Effect.id`.
-4. Orders 1, 2 and 3 are all present; ≤4 effects per order.
-5. Order-1 effects reference `{kind:'rule'}`; order-2 reference ≥1 order-1
-   effect; order-3 reference ≥1 order-2 effect.
-6. **Chapter ≥2:** ≥1 `Ref` of kind `invariant` or `liveTension` appears
-   somewhere in the chain.
-7. ≥4 distinct `Domain` values across the chain.
-8. ≥4 distinct `ShotType` values across the 12 pages.
-9. Every `entityRefs` entry resolves to a `worldCanon.namedEntities[].name`,
-   and no page carries more than **3**.
+1. 12–15 pages, indices 1–N exactly once.
+2. Every `page.text` is 5–90 words (already enforced by `parseStory`).
+3. Every `page.derivedFrom` resolves to an `Effect.id`.
+4. Orders 1, 2 and 3 all present; ≤4 entries per order.
+5. Order-1 entries reference `{kind:'rule'}`; order-2 reference ≥1 order-1;
+   order-3 reference ≥1 order-2. The message names the eligible parents.
+6. **Chapter ≥2:** ≥1 `invariant` or `liveTension` ref in the chain.
+8. ≥3 distinct `ShotType` values.
+9. `entityRefs` resolve, ≤2 per page.
 10. No `worldCanon` array exceeds its cap.
-11. **Chapter 1:** `styleBible` is present and ≤600 characters.
-    **Chapter ≥2:** no `styleBible` and no `worldTitle` present.
+11. **Chapter 1:** `styleBible` present and ≤240 characters.
+    **Chapter ≥2:** no `styleBible`, no `worldTitle`.
 12. `supersededRules` gains exactly one entry when `ruleType` coerces to
-    `contradictory`, and is unchanged otherwise; `transitionNote` is present and
-    ≤40 words in the contradictory case. Chapter 1 always coerces to
-    `additive` — there is nothing yet to contradict.
-13. Length caps that keep assembly inside 2048 characters: every `imagePrompt`
-    ≤900, every `namedEntities[].visualDescription` ≤110, every `Effect.text`
-    ≤25 words. `imagePrompt` also has a *floor* — see rule 19 and
-    § The scene floor.
-14. Every `visualLaw` ≤70 characters and not phrased as an absence.
-15. The arc tiles pages 1–12 contiguously, 2–5 movements, label ≤6 words.
-16. Pages are selected from the chain, not printed off it — see § below.
-17. No named entity on more than 5 of 12 pages; ≥3 pages reference none.
-18. Voice — see § Voice below.
-19. **The scene dominates the assembled image prompt.** `page.imagePrompt`'s
-    share of the assembled prompt must be ≥40%. Checked on the assembled
-    prompt, not the raw field, because that is what the illustrator sees.
-20. **The through-line actually recurs.** `throughLine.headNoun` must appear
-    (case-insensitive, whole word) in at least 7 of 12 pages' text.
-21. **No habitual register in page text.** "Launches nine times a day",
-    "usually checks the line", "these days", "increasingly" — describing how
-    things generally are, rather than the one occasion it happened.
-22. **No gazetteer rhythm.** At most 4 of 12 pages may open with `The [Name]…`.
+    `contradictory`, with a `transitionNote` ≤40 words; unchanged otherwise.
+13. Lengths: `imagePrompt` 80–400 (the prompt asks for ≥150), `visualDescription` ≤140 (asked ≤110), `hero.look` ≤140,
+    `Effect.text` ≤25 words.
+14. Every `visualLaw` ≤90 characters (asked ≤70) and not phrased as an absence.
+15. The arc tiles pages 1–N contiguously, 2–5 movements, label ≤10 words
+    (the prompt asks for ≤6 — a 7-word label once failed a whole chapter).
+23. No `neverDrawn` word appears in any field that reaches Flux: every
+    `imagePrompt`, `hero.look`, entity descriptions, laws, styleBible.
+24. Where `neverDrawn` names a kind of person, no `imagePrompt` uses a vague
+    people word without also saying who they are.
+25. The hero is in at least half the pictures (`heroInScene`).
+26. `hero.look` and every `person` entity state an age (`AGE_PATTERN`: a digit,
+    an age word, "of nine", "nine-year-old", or a word that fixes the band —
+    "woman", "grandmother"; never "girl" or "child" alone). Without one Flux picks an age per
+    picture — "a tall slender girl" was a woman on some plates, a teen on others.
+
+### Retired rules
+
+Numbers are not reused, so old exports and violation logs still read.
+
+- **7** — ≥4 domains across the chain. The quota sent every book on a tour:
+  a transport page, an economy page, a politics page.
+- **16, 17** — pages must not follow the chain one-to-one; entities capped at 5
+  pages, ≥3 pages somewhere unnamed. Both forced scattering — a new place every
+  page — which is the opposite of a story.
+- **18, 21, 22** — the voice rules: sentence-length caps, no semicolons, a
+  stiff-word blocklist, no habitual tense, no "The [Name]…" openings. Each fixed
+  one symptom of slide-deck prose; together they made the model write to a
+  checklist, and none of them could create a plot.
+- **19** — scene ≥40% of the assembled prompt. Replaced by a short assembly with
+  the scene first and a 150-character floor (rule 13).
+- **20** — `throughLine.headNoun` in ≥7 of 12 pages. A word count proved a
+  through-line was *mentioned*, not that anything happened to it. Replaced by
+  the story pass and `hero`.
 
 ## Storage
 
-IndexedDB. Images are stored as Blobs — data URLs cost a third more space and
-decode slower.
+IndexedDB. Images are stored as Blobs.
 
 ```ts
 // worlds
@@ -414,270 +509,56 @@ decode slower.
 
 // chapters
 { id, worldId, number, rule, mode, ruleType, transitionNote,
-  diagramHints, throughLine, arc, chain, pages, status,
-  haltedAt, haltMessage,   // set on a quota halt, so resume can tell
-                           // whether the UTC day has turned
-  priorCanon }             // snapshot of the canon this chapter branched
-                           // off — see below
+  diagramHints, hero, summary, throughLine /* legacy */, arc, chain, pages,
+  status, haltedAt, haltMessage, priorCanon }
 
 // images
 { id: `${chapterId}:${pageIndex}`, blob, seed, promptUsed,
-  status, neuronCost,    // the measured cf-ai-neurons header,
-                         // never a calculation
-  failureCode,           // upstream code, when this plate failed
-  failureMessage }
+  status, neuronCost, failureCode, failureMessage }
 ```
 
 `status` on chapters: `reasoning | rendering | complete | halted_quota |
 halted_error | reasoning_failed`.
 `status` on images: `pending | generating | ready | failed | refused`.
 
-Per-image status is what makes resume-after-halt possible. `refused` is a
-distinct terminal state — that page shows a styled placeholder and never retries.
+`refused` is terminal and per-plate. A prompt-independent fault — a rejected
+request shape, or four consecutive refusals with nothing drawn — halts the pool
+as `systemic` instead, leaving plates `pending` so a fix can resume them.
 
 ### Arc
 
-`arc` is 2–5 movements, each `{ label, fromPage, toPage }`, tiling pages 1–12
-contiguously with no gaps or overlaps. Movement lengths may differ — the
-interesting stretch of a premise should get more pages.
-
-The model chooses **how many movements and what they are called**, to fit the
-premise it was given: a rule that lasts a day wants *the first hour / everyone at
-once / what was still broken by morning*, while a permanent physical change
-spreads across generations. Rule 15 checks the tiling and the label length and
-**nothing about the content** — a fixed act structure would give every world in
-the library the same rhythm, which is the failure this exists to avoid. Labels
-naming a template ("act one", "setup") are discouraged in the prompt.
-
-The reader shows the current movement's label beside the plate number.
-
-### Voice — page text only
-
-Rule 18, and it applies to `pages[].text` alone. The **chain is the reasoning
-layer and stays precise**; technical vocabulary is correct there and wrong on
-the page somebody actually reads.
-
-The target is somebody telling you what happened — plain, direct, concrete. Not
-literature, not a news report, not a lecture. Four checkable symptoms of prose
-that has drifted away from that:
-
-- **Sentence length ceiling.** No sentence in page text may exceed
-  `LONG_SENTENCE_WORDS` (22). One idea per sentence; a comma holding two
-  thoughts together is usually two sentences. This is the rule that catches
-  "literary" most directly — the fixture ran to 29 words before it existed, and
-  the rewrite that brought every page under 22 lost nothing but the drag.
-- **No semicolons.** `LITERARY_PUNCTUATION`. Nobody speaks one. Two short
-  sentences always do the same work and read faster.
-- **Rhythm.** At least 4 of 12 pages must contain a sentence of ≤8 words. Every
-  sentence landing at the same medium length is most of why prose reads flat,
-  and it is the half a machine can see. Not enforced per page — a clipped closer
-  on all twelve would be its own monotony. Both thresholds were calibrated
-  against live output rather than guessed: at ≤7 words the rule fired on a
-  chapter whose lengths ran 6–18, which would have spent the single retry on a
-  near-miss.
-- **Register.** `STIFF_REGISTER_PATTERN` flags words that have ordinary
-  equivalents, in three families, because the pages went wrong in three
-  directions: the technical survey (*subterranean, culvert, deluge, utilise,
-  illuminate, carrying capacity*), the politics-and-economics briefing
-  (*governance, jurisdiction, populace, sector, moreover, thus*) and the
-  literary flourish (*whilst, amidst, myriad, gossamer, poignant*). Deliberately
-  not exhaustive: a blocklist cannot teach voice, so it catches repeat offenders
-  and the prompt does the teaching, with before/after pairs ("underground
-  trains", not "subterranean transit systems").
-
-  The pattern is built from two lists — whole words and stems matched with any
-  suffix. It has to be, because the earlier single alternation wrapped every
-  entry in `\b…\b`, which silently disabled every stem in it: `illuminat` has no
-  word boundary before the `e` of `illuminate`, so the entry that existed to
-  catch the prompt's own worked example never matched anything. A list that
-  reads as enforcement and enforces nothing is worse than no list.
-
-Beyond what is counted, the prompt bans abstract nouns doing the work — no
-"economic pressure", "the authorities", "the system", but the queue outside the
-door, the padlock, the price chalked on a board — and asks the page to have a
-feeling about itself, funny or sad or startling, because neutral across all
-twelve is its own monotony. Contractions and sentence fragments are explicitly
-invited: the target is somebody talking, not somebody writing carefully.
-
-Two more symptoms, added when plain-but-technically-correct prose still read as
-an exhibit catalogue rather than a book:
-
-- **Rule 21, the habitual register.** "Launches nine times a day", "keeps
-  eleven beds and is rarely full" — grammatically plain, but describing a
-  *pattern* rather than an *occasion*. `HABITUAL_PATTERN` flags frequency and
-  generalisation words (`usually`, `these days`, `increasingly`, `N times a
-  day/week/year`, …). Present tense stays allowed; the enemy is habituality,
-  not tense — "the streetlights still come on at dusk, for nobody" is present
-  tense and fine. The fix is always the same: pick the one occasion and narrate
-  that.
-- **Rule 22, the gazetteer rhythm.** "The Spindle rises...", "Halfweight Port
-  launches...", "The Vertigo Ward keeps..." — every page opening on the
-  landmark's name is an exhibit-caption shape. At most 4 of 12 pages may open
-  with `The [Name] …`; the rest open on a person, an action, or a detail, and
-  let the place reveal itself in the sentence after.
-
-### Through-line
-
-Rule 20. Twelve independently-derived facts, however well each one is written,
-read as a slide deck rather than a book — nothing carries from page 3 to page
-4. `throughLine` is the fix: one unnamed role or small group (`the rope crew`,
-`the night shift`) chosen before the pages are written, that a reader can
-follow across the twelve. Same face/name invariant as `namedEntities`: a role,
-never a name, never a described face.
-
-`throughLine.headNoun` — one word from `role`, used consistently on the page —
-must appear in at least 7 of 12 pages' text. This is checked mechanically
-rather than judged, which is deliberate: a through-line that is declared in the
-JSON but never actually shows up on the page is worse than useless, because it
-looks like the problem was solved.
-
-The role does not have to be the chain's subject — the chain can stay about the
-world at large — but it is who the reader watches the world happen to and
-through.
-
-### Pages are selected from the chain, not printed off it
-
-Rule 16. The chain is research; the pages are what gets made from it. Left
-unconstrained the model emits one page per node **in id order** — the export
-showed `derivedFrom` running `e1,e2,…,e12` — and the book reads as twelve
-disconnected facts with no selection and no arrangement. That single coupling
-was the root cause of the report feel, more than tone or pacing.
-
-So the mapping is deliberately **not** a bijection:
-
-- at least one effect carries 2+ pages, letting a moment unfold — cap 4, so the
-  chapter cannot collapse onto one idea;
-- some effects therefore get no page at all, which is the editorial judgement
-  that was missing;
-- page order serves the reading — never effect id;
-- `derivedFrom` remains, so derivation stays checkable. It is a citation, not a
-  running order.
-
-Rule 17 keeps the world bigger than its landmarks: no named entity on more than
-5 of 12 pages, and at least 3 pages somewhere not in `namedEntities` at all.
-Eleven of twelve pages once referenced the same three entities, which read as a
-book set in one building.
-
-### Prompt budget: the scene must dominate
-
-Every plate in a chapter shares the same styleBible and visual laws, so the
-scene is the only thing making one page look different from the next. Measured
-on the fixture, the shared prefix — styleBible, laws, entity descriptions — was
-~82% of the assembled prompt, so every plate looked alike regardless of how
-varied the scenes underneath it were.
-
-The fix has three parts, all load-bearing:
-
-1. **Scene leads.** Assembly order is `imagePrompt` first, `styleBible` last —
-   diffusion models weight leading tokens heaviest.
-2. **The shared prefix shrank.** `styleBible` 600→320, `visualLaw` 100→70,
-   `entityDescription` 180→110 (`PROMPT_LIMITS` in `lib/types.ts`).
-3. **Rule 19 enforces it.** The scene must be ≥40% of the assembled prompt, not
-   merely encouraged to be. Measured on the rewritten fixture: scene share went
-   from 18% (17% at worst) to 42% (40% at worst).
+`arc` is 2–5 movements, each `{ label, fromPage, toPage }`, tiling pages 1–N.
+Labelled in step 2 from the story as written. Rule 15 checks the tiling and
+nothing about the content. The reader shows the current movement's label beside
+the plate number.
 
 ### Pre-flight modes
 
-`mode` distinguishes what the person typed, and matters more than the verdict:
-
-| mode | input | handling |
+| mode | input | step 1 writes |
 |---|---|---|
-| `rule` | a general present-tense condition of reality | derive consequences |
-| `story` | particular characters and events, already begun | tell it forward |
+| `rule` | a general present-tense condition of reality | a story set in a world where it holds |
+| `story` | particular characters and events, already begun | that story, continued and finished |
 
 The test is *could this be true of a whole world for years, or did it happen to
-someone on a particular day?* When genuinely torn the classifier prefers `story`
-— a premise can always be told as events, but forcing events into a general
-condition loses what the person wrote.
-
-The mode travels with the chapter: pre-flight → composer → `POST /api/chapter` →
-`buildChapterPrompt` → `validateChapter` → `StoredChapter.mode` → export. It is
-optional on the request and defaults to `rule`, so an older client still gets
-the derived world it expects.
-
-**What actually differs between the two pipelines**
-
-Both return the same JSON contract, and everything downstream — the reasoning
-diagram, prompt assembly, the render pool, the reader — is untouched by the
-mode. Only three things change:
-
-- **The chain.** In `rule` mode it is twelve consequences at three orders. In
-  `story` mode it is twelve **beats** at three orders: the opening and the hours
-  after it, what those lead to over days or weeks, and how it settles. The
-  derivedFrom relation is unchanged and means the same thing — *this was caused
-  by that* — which is why the diagram still reads.
-- **Rule 7.** `MIN_DISTINCT_DOMAINS` is 4 for a derived world and
-  `MIN_DISTINCT_DOMAINS_STORY` is 2 for a story. Demanding four domains of a
-  story is what turned a boy falling off his bicycle into a chapter with an
-  economics beat and a politics beat — the quota conscripted the material.
-  Relaxed, not abolished: a story whose every beat lands in one domain is
-  happening in a vacuum and is still rejected.
-- **Scale.** The story prompt says explicitly that the book is not an essay
-  about what such an event would mean for society: no policy, no statistics, no
-  institutions reacting. One place, a handful of people, something at stake for
-  somebody, settled by beat 12.
-
-The no-named-characters constraint holds in both, because it comes from the
-illustrator rather than from taste — twelve independent generations cannot hold
-a face. A story follows *the boy*, never Tom.
-
-### Visual laws
-
-`worldCanon.visualLaws` — at most 3, each at most 90 characters — are the only
-channel through which a rule reaches the image model. Flux is given the assembled
-prompt and nothing else: not the rule, not the chain, not the page text. Where
-the prompt says nothing, it draws the ordinary present-day world. That is how
-`a world without men` produced plate after plate of men.
-
-Each law states, positively and visually, something always true on screen:
-
-> Every person in every scene is a woman or a girl, spanning all ages.
-
-**Never phrase a law as an absence.** Flux Schnell has no negative-prompt
-parameter — the input surface is `prompt` and `steps` — so "no men anywhere"
-merely puts *men* in front of the model. `lib/validate.ts` rule 14 rejects
-negations outright.
-
-Assembly splices them **once**, between the entity descriptions and the
-styleBible — see § Image prompt assembly. They were spliced twice while
-fidelity was unproven; with fidelity holding, the second copy was spending
-~230 characters the scene needed more. They are never dropped to save
-characters — they are the mechanism.
-
-They live in `worldCanon`, not with the frozen styleBible, so a later rule can
-put back what an earlier one took off the page. Chapter 1's styleBible must agree
-with them where it describes figures; the two are read together on every page.
-
-**The failure reason is stored on the plate.** `failureCode` and
-`failureMessage` carry Cloudflare's `code` and `message` through the route and
-the pool onto the image record, and into the export. A chapter that comes back
-mostly withheld is diagnosable from the export alone — which it was not when ten
-plates were lost to a cause the status field could not express.
-
-A refusal is only ever *per subject*. A prompt-independent fault — a rejected
-request shape, or four consecutive refusals with nothing drawn — halts the pool
-as `systemic` instead, leaving the plates `pending` so a fix can resume them.
-Never let an unrecognised upstream error land in `refused`: that is precisely
-how one bug came to look like twelve.
-
-**`priorCanon` is provenance, not accumulation.** The world's canon is replaced
-every chapter, but a chapter's chain holds `invariant` and `liveTension`
-references by *index* into the canon that existed when it was generated. Without
-a snapshot, chapter 2's reasoning diagram becomes unreadable the moment chapter 3
-replaces the canon. It is bounded by the same caps as any canon.
+someone on a particular day?* When torn, prefer `story`. The two modes share
+everything except step 1's opening brief and step 2's description of the chain
+(consequences vs. beats). The `story` brief adds an explicit ban on turning
+somebody's afternoon into an essay about society.
 
 ## Export
 
-v5 export is JSON, images excluded, so a world stays small enough to paste.
+v7 export is JSON, images excluded.
 
 ```ts
 {
-  version: 5,
-  exportedAt,                    // ISO string
-  world,                         // the full StoredWorld
+  version: 7,
+  exportedAt,
+  world,                         // the full StoredWorld, canon incl. neverDrawn
   chapters: [{
     id, number, rule, mode, ruleType, transitionNote, status,
-    diagramHints, throughLine, priorCanon, arc, chain, pages,
+    diagramHints, throughLine, hero, summary, plan,
+    models,                      // { story, plates } — which Gemini model wrote each
+    priorCanon, arc, chain, pages,
     plates: [{ pageIndex, seed, promptUsed, status, neuronCost,
                failureCode, failureMessage }],
   }],
@@ -685,15 +566,9 @@ v5 export is JSON, images excluded, so a world stays small enough to paste.
 }
 ```
 
-`arc` arrived in v3, `mode` in v4, `throughLine` in v5, all for the same
-reason: the export is the artefact a chapter is reviewed from, and reviewing
-page text without knowing what it was derived from, told as, or meant to carry
-means reviewing it against the wrong brief. Older files omit whichever fields
-postdate them — chapters written before `mode` existed all had an implicit mode
-of `rule`; chapters written before `throughLine` existed have none.
-
-A reimported world regenerates from the same prompts but not the same images —
-see § Seeds. `failureCode` and `failureMessage` are what make a bad run
-diagnosable from the file alone. `promptUsed` is the fully assembled
-prompt — styleBible, spliced entity descriptions, shot type, scene and
-composition clause — which is what makes an export enough to debug from.
+`arc` arrived in v3, `mode` in v4, `throughLine` in v5, `hero` and `summary` in
+v6, `models` in v7 (a busy model hands over to a fallback, so a chapter's
+writing is judged knowing which model wrote it) — each because the export is the artefact a chapter is reviewed from, and a
+field missing from it reads as a feature that never shipped. `promptUsed` is
+the fully assembled prompt, which is what makes an export enough to debug a
+plate from.

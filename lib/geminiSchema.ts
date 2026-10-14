@@ -7,129 +7,113 @@ import { DOMAINS, PREFLIGHT_MODES, RULE_TYPES, SHOT_TYPES } from './types';
  * lib/validate.ts, never here. Verified in Spike 0.
  *
  * `anyOf` does work, so the Ref union survives intact.
+ *
+ * **Every object carries `propertyOrdering`.** Without it the API writes
+ * properties in alphabetical order, not the order they are declared — so the
+ * old chapter schema had the model write `pages` before `styleBible`,
+ * `throughLine` and `worldCanon`: every image prompt was written before the
+ * visual laws it was meant to obey existed. Field order is the order the model
+ * thinks in, so it is set deliberately, decisions before the things that
+ * depend on them.
  */
 const STRING = { type: 'STRING' } as const;
 const INTEGER = { type: 'INTEGER' } as const;
+const BOOLEAN = { type: 'BOOLEAN' } as const;
 
-const refSchema = {
-  anyOf: [
-    { type: 'OBJECT', properties: { kind: { type: 'STRING', enum: ['rule'] } }, required: ['kind'] },
-    { type: 'OBJECT', properties: { kind: { type: 'STRING', enum: ['effect'] }, id: STRING }, required: ['kind', 'id'] },
-    { type: 'OBJECT', properties: { kind: { type: 'STRING', enum: ['invariant'] }, index: INTEGER }, required: ['kind', 'index'] },
-    { type: 'OBJECT', properties: { kind: { type: 'STRING', enum: ['liveTension'] }, index: INTEGER }, required: ['kind', 'index'] },
-  ],
-};
-
-const effectSchema = {
-  type: 'OBJECT',
-  properties: {
-    id: STRING,
-    order: INTEGER,
-    domain: { type: 'STRING', enum: [...DOMAINS] },
-    text: STRING,
-    derivedFrom: { type: 'ARRAY', items: refSchema },
-  },
-  required: ['id', 'order', 'domain', 'text', 'derivedFrom'],
-};
-
-const pageSchema = {
-  type: 'OBJECT',
-  properties: {
-    index: INTEGER,
-    text: STRING,
-    derivedFrom: STRING,
-    shotType: { type: 'STRING', enum: [...SHOT_TYPES] },
-    imagePrompt: STRING,
-    entityRefs: { type: 'ARRAY', items: STRING },
-    altText: STRING,
-  },
-  required: ['index', 'text', 'derivedFrom', 'shotType', 'imagePrompt', 'entityRefs', 'altText'],
-};
-
-const worldCanonSchema = {
-  type: 'OBJECT',
-  properties: {
-    baseline: STRING,
-    activeRules: {
-      type: 'ARRAY',
-      items: { type: 'OBJECT', properties: { rule: STRING, enteredChapter: INTEGER }, required: ['rule', 'enteredChapter'] },
-    },
-    physicsDeltas: { type: 'ARRAY', items: STRING },
-    invariants: { type: 'ARRAY', items: STRING },
-    namedEntities: {
-      type: 'ARRAY',
-      items: {
-        type: 'OBJECT',
-        properties: { name: STRING, type: { type: 'STRING', enum: ['place', 'object', 'institution'] }, visualDescription: STRING },
-        required: ['name', 'type', 'visualDescription'],
-      },
-    },
-    visualLaws: { type: 'ARRAY', items: STRING },
-    liveTensions: { type: 'ARRAY', items: STRING },
-    supersededRules: {
-      type: 'ARRAY',
-      items: { type: 'OBJECT', properties: { rule: STRING, chapterReversed: INTEGER }, required: ['rule', 'chapterReversed'] },
-    },
-  },
-  required: ['baseline', 'activeRules', 'physicsDeltas', 'invariants', 'namedEntities', 'visualLaws', 'liveTensions', 'supersededRules'],
-};
-
-/**
- * Chapter 2+ gets a variant with no `styleBible` and no `worldTitle` field at
- * all, so regenerating a frozen artifact is structurally impossible rather than
- * merely forbidden.
- */
-export function chapterSchemaFor(chapterNumber: number) {
-  const first = chapterNumber === 1;
-
+/** An OBJECT whose output order is its declaration order. All properties required. */
+function object(properties: Record<string, unknown>, optional: string[] = []) {
+  const keys = Object.keys(properties);
   return {
     type: 'OBJECT',
-    properties: {
-      ruleType: { type: 'STRING', enum: [...RULE_TYPES] },
-      transitionNote: STRING,
-      ...(first ? { worldTitle: STRING, styleBible: STRING } : {}),
-      diagramHints: {
-        type: 'OBJECT',
-        properties: { palette: { type: 'ARRAY', items: STRING }, motif: STRING },
-        required: ['palette', 'motif'],
-      },
-      throughLine: {
-        type: 'OBJECT',
-        properties: { role: STRING, headNoun: STRING, want: STRING },
-        required: ['role', 'headNoun', 'want'],
-      },
-      arc: {
-        type: 'ARRAY',
-        items: {
-          type: 'OBJECT',
-          properties: { label: STRING, fromPage: INTEGER, toPage: INTEGER },
-          required: ['label', 'fromPage', 'toPage'],
-        },
-      },
-      chain: { type: 'ARRAY', items: effectSchema },
-      pages: { type: 'ARRAY', items: pageSchema },
-      worldCanon: worldCanonSchema,
-    },
-    required: [
-      'ruleType',
-      'diagramHints',
-      'throughLine',
-      'arc',
-      'chain',
-      'pages',
-      'worldCanon',
-      ...(first ? ['worldTitle', 'styleBible'] : []),
-    ],
+    properties,
+    propertyOrdering: keys,
+    required: keys.filter((key) => !optional.includes(key)),
   };
 }
 
-export const preflightSchemaForGemini = {
-  type: 'OBJECT',
-  properties: {
-    verdict: { type: 'STRING', enum: ['valid', 'coercible', 'unusable'] },
-    mode: { type: 'STRING', enum: [...PREFLIGHT_MODES] },
-    interpretedRule: STRING,
-    reason: STRING,
-  },
-  required: ['verdict', 'mode', 'interpretedRule', 'reason'],
+const refSchema = {
+  anyOf: [
+    object({ kind: { type: 'STRING', enum: ['rule'] } }),
+    object({ kind: { type: 'STRING', enum: ['effect'] }, id: STRING }),
+    object({ kind: { type: 'STRING', enum: ['invariant'] }, index: INTEGER }),
+    object({ kind: { type: 'STRING', enum: ['liveTension'] }, index: INTEGER }),
+  ],
 };
+
+const effectSchema = object({
+  id: STRING,
+  order: INTEGER,
+  domain: { type: 'STRING', enum: [...DOMAINS] },
+  text: STRING,
+  derivedFrom: { type: 'ARRAY', items: refSchema },
+});
+
+/**
+ * No `text`: the page text belongs to the story pass and is merged in by the
+ * route. Within a page, the decisions (who is in it, which place) come before
+ * the prompt that has to honour them.
+ */
+const plateSchema = object({
+  index: INTEGER,
+  derivedFrom: STRING,
+  shotType: { type: 'STRING', enum: [...SHOT_TYPES] },
+  heroInScene: BOOLEAN,
+  entityRefs: { type: 'ARRAY', items: STRING },
+  imagePrompt: STRING,
+  altText: STRING,
+});
+
+/** Laws and the never-drawn list come before the entities, which must obey them. */
+const worldCanonSchema = object({
+  baseline: STRING,
+  activeRules: { type: 'ARRAY', items: object({ rule: STRING, enteredChapter: INTEGER }) },
+  visualLaws: { type: 'ARRAY', items: STRING },
+  neverDrawn: { type: 'ARRAY', items: STRING },
+  physicsDeltas: { type: 'ARRAY', items: STRING },
+  invariants: { type: 'ARRAY', items: STRING },
+  namedEntities: {
+    type: 'ARRAY',
+    items: object({
+      name: STRING,
+      type: { type: 'STRING', enum: ['person', 'place', 'object', 'institution'] },
+      visualDescription: STRING,
+    }),
+  },
+  liveTensions: { type: 'ARRAY', items: STRING },
+  supersededRules: { type: 'ARRAY', items: object({ rule: STRING, chapterReversed: INTEGER }) },
+});
+
+/**
+ * Step 2 of a chapter: the pictures and the world record, for a story that is
+ * already written. Chapter 2+ gets no `styleBible` field at all, so
+ * regenerating a frozen artifact is structurally impossible rather than merely
+ * forbidden.
+ *
+ * Order: what kind of change this is → how pictures look → what is always on
+ * screen → who the hero is → the reasoning → the shape → the plates.
+ */
+export function platesSchemaFor(chapterNumber: number) {
+  const first = chapterNumber === 1;
+  return object(
+    {
+      ruleType: { type: 'STRING', enum: [...RULE_TYPES] },
+      transitionNote: STRING,
+      ...(first ? { styleBible: STRING } : {}),
+      worldCanon: worldCanonSchema,
+      hero: object({ role: STRING, look: STRING, want: STRING }),
+      chain: { type: 'ARRAY', items: effectSchema },
+      arc: { type: 'ARRAY', items: object({ label: STRING, fromPage: INTEGER, toPage: INTEGER }) },
+      pages: { type: 'ARRAY', items: plateSchema },
+      diagramHints: object({ palette: { type: 'ARRAY', items: STRING }, motif: STRING }),
+    },
+    ['transitionNote'],
+  );
+}
+
+/** Mode first: it is the decision everything else in the verdict depends on. */
+export const preflightSchemaForGemini = object({
+  mode: { type: 'STRING', enum: [...PREFLIGHT_MODES] },
+  verdict: { type: 'STRING', enum: ['valid', 'coercible', 'unusable'] },
+  interpretedRule: STRING,
+  reason: STRING,
+});

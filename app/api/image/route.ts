@@ -12,7 +12,7 @@ const requestSchema = z.object({
 });
 
 /**
- * Exactly one image per request. The client fires twelve of these through a pool
+ * Exactly one image per request. The client fires one of these per page through a pool
  * of three — a serverless function that loops over pages times out.
  */
 export async function POST(request: Request) {

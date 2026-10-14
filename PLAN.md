@@ -248,6 +248,56 @@ which is the measure of how far both problems had drifted. Not yet run live:
 next verification is one real chapter, checked against rules 19–22 on the first
 attempt and read cold from the export to judge whether it reads as one story.
 
+### 10. Story first — the rework
+
+Phases 8 and 9 kept adding checks to the prose, and live chapters still read as
+slides: no plot, a new place every page, plates of roads, offices and bridges,
+and "a world without men" drawing men a few pages in. The cause was structural,
+not lexical, and more rules could not reach it.
+
+**The skeleton was a list.** One call wrote a twelve-node causal chain and then
+pages citing it, inside JSON, under two dozen counted constraints — several of
+which (domain spread, entity caps, pages-somewhere-new) actively forced
+scattering. Now two calls (`lib/prompts.ts`, `app/api/chapter/route.ts`): step 1
+writes the story as plain prose with one hero, a want, a turn and an ending,
+checked only for 12–15 pages and page length; step 2 reads it and returns the
+plates and canon as JSON, never touching the text. Rules 7 and 16–22 retired.
+The writer picks 12–15 pages so endings stop arriving mid-scene.
+
+**The schema was written alphabetically.** Gemini orders JSON properties
+alphabetically unless `propertyOrdering` is set, which it was not — so `pages`
+came out before `styleBible`, `throughLine` and `worldCanon`. Every image prompt
+was written before the laws it had to obey. Every schema object now fixes its
+order; the pre-flight one too (it wrote `interpretedRule` before `mode`).
+
+**The laws were probably being cut off.** The reference FLUX.1 [schnell]
+pipeline encodes ~256 T5 tokens (~1,000–1,100 characters). Prompts ran to
+~1,700 with the visual laws ~1,300 in. Assembly is now scene → hero look → laws
+→ entity → shot → style → composition, typically under 1,000 characters. Plus
+`worldCanon.neverDrawn` — words that would summon what the rule removed, never
+sent to Flux, checked out of every field that is (rules 23, 24).
+
+**A hero, drawn by costume.** `hero.look` is spliced into every plate the hero
+is on (rule 25: at least half). The styleBible is now forbidden from describing
+architecture, which had put the same buildings on every plate.
+
+Verified offline: `check:fixture` (rewritten fixture: a 13-page story) and
+`check:queue` pass; the live Gemini API accepts `propertyOrdering` (pre-flight).
+Live chapter verification was blocked on launch day by `gemini-3.6-flash`
+returning "high demand" 503s — next step is one real chapter per mode, read cold
+from the export, then one rendered.
+
+**Busy is not broken, and it is not free.** The "always overloaded" failures
+were two things: free-tier 503 load-shedding, and the free cap of 20 requests a
+day per project on gemini-3.6-flash — which the 503s themselves, and the 4s/12s
+retries after each, were spending. Fixes: `GEMINI_FALLBACK_MODELS` (each model
+has its own allowance; a busy, rate-limited or spent model hands over, busy
+ones get one more pass after 20s); step 2 failures return the finished story
+as `draft`, and the client's "try again" sends it back so only the plates are
+redone; `models` records which model wrote each chapter (export v7).
+`gemini-3.7-flash` is an alias that serves 3.8, which was slow (65s for one
+sentence) — a fallback, not a main model.
+
 ### 1. Schema and validator
 Types and Zod validators from [docs/SCHEMA.md](docs/SCHEMA.md). A checked-in
 fixture chapter in `fixtures/` that passes every rule, plus deliberately broken

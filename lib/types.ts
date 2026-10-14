@@ -14,50 +14,70 @@ export const DOMAINS = [
   'culture', 'environment', 'conflict', 'science',
 ] as const;
 
+/**
+ * `medium` and `close-up` were added with the story-first rework: a picture
+ * book follows somebody, and the original list — aerial, crowd, diagram,
+ * incidental-figures — only had words for surveying a place. The old values
+ * stay so stored chapters still parse.
+ */
 export const SHOT_TYPES = [
-  'wide', 'detail', 'diagram', 'interior',
-  'aerial', 'crowd', 'incidental-figures',
+  'wide', 'medium', 'close-up', 'detail', 'interior',
+  'aerial', 'crowd', 'incidental-figures', 'diagram',
 ] as const;
 
 export const RULE_TYPES = ['additive', 'contradictory', 'ambiguous'] as const;
 
 // ── Limits ────────────────────────────────────────────────────────────────
-// Flux Schnell caps the prompt at 2048 characters. Every part is budgeted so
-// the worst case lands at 1767. See docs/SCHEMA.md § Character budget.
+// Cloudflare accepts 2048 characters, but that is not what Flux reads. The
+// reference FLUX.1 [schnell] pipeline encodes at most 256 T5 tokens — roughly
+// 1,000–1,100 characters of English — and silently drops the rest. Prompts
+// used to run to ~1,700 characters with the visual laws near the end, which is
+// the most likely reason "a world without men" kept drawing men: the law that
+// said otherwise was in the part that got cut. Everything is now budgeted so
+// the parts that decide what is IN the picture land early, and anything that
+// might be clipped is style. See docs/SCHEMA.md § Image prompt assembly.
 
 export const PROMPT_LIMITS = {
+  /** The endpoint's hard limit. Nothing we assemble comes near it now. */
   total: 2048,
   /**
-   * 320, not 600. The scene must dominate the prompt, not the style. At 600 the
-   * shared prefix — styleBible plus laws plus entities — measured at 82% of the
-   * average assembled prompt (check:fixture), so every plate looked alike
-   * regardless of how varied the scenes were. Cut in favour of the scene.
+   * What assembly aims to stay under. Every hard cap filled — a recurring
+   * person and a place — with a legacy 320-character styleBible lands at 1499,
+   * a new world's at 1419; typical plates land under 1000. Past ~1050 the encoder
+   * may clip, which is why the order puts the styleBible and composition
+   * clause last: if anything is lost, it is a few words of style, never the
+   * scene, the hero, a recurring person or a law.
    */
-  styleBible: 320,
-  entityDescription: 110,
+  assembled: 1500,
   /**
-   * Two, not three. Eleven of twelve pages once leaned on the same three
-   * landmarks, which made the book feel like it was set in a single building.
+   * 240 for new worlds. Worlds created before the rework keep their frozen
+   * 320-character styleBible; the assembly budget allows for it.
+   */
+  styleBible: 240,
+  /**
+   * Asked for in the prompt; the validator allows up to the Max. Ages made
+   * descriptions longer, and a 110 hard cap failed a whole chapter three times
+   * over descriptions of 113–118 characters.
+   */
+  entityDescription: 110,
+  entityDescriptionMax: 140,
+  /**
+   * Two: a recurring person beside the hero (the little sister) plus the place.
+   * With one, the sister lost the slot to the sorting office on every indoor
+   * page and was redrawn in whatever the scene said that time.
    */
   entityRefsPerPage: 2,
   /**
-   * The scene should dominate the prompt, not trail it. Budgeted against the
-   * 2048 cap: 320 styleBible + 214 laws + 222 entities + 23 shot + 73
-   * composition + 15 separators = 867, leaving room for this to lead.
-   *
-   * 900, not 650. This is a *cap*, but rule 19 gives the same field a floor —
-   * 578 characters on a page carrying two entityRefs (see SCENE_CHARS_MIN). At
-   * 650 that left a 72-character window for a model that cannot count its own
-   * characters, so a page could satisfy the instruction and still miss rule 19
-   * by a few words. 900 widens the window to 322 and still lands the worst-case
-   * assembled prompt at 1767, well inside the 2048 endpoint limit.
+   * The scene: what this page's text is showing. 400, not 900 — a 900-character
+   * scene alone filled most of what the encoder reads, which pushed the laws
+   * and the style off the end.
    */
-  imagePrompt: 900,
-  /**
-   * 70, not 100. Shrunk alongside styleBible so the shared prefix stays a
-   * minority of the prompt; three laws at 70 is 210, well under the scene.
-   */
+  imagePrompt: 400,
+  /** How the main character looks, spliced into every plate they are on. */
+  heroLook: 140,
+  /** Asked for; a 71-character law once failed a chapter. The validator allows the Max. */
   visualLaw: 70,
+  visualLawMax: 90,
   /** How many laws ride on one prompt. Matches the canon cap; both ends stay in step. */
   visualLawsPerPrompt: 3,
 } as const;
@@ -70,6 +90,7 @@ export const CANON_CAPS = {
   liveTensions: 5,
   supersededRules: 4,
   visualLaws: 3,
+  neverDrawn: 30,
 } as const;
 
 /**
@@ -83,167 +104,86 @@ export const CANON_CAPS = {
 export const NEGATION_PATTERN =
   /\b(no|not|never|without|absent|lacking|devoid|none|nobody|no one|nothing|neither|nor|excluding|removed|banned|forbidden|extinct|vanished|disappeared)\b/i;
 
-export const PAGES_PER_CHAPTER = 12;
+/**
+ * Twelve to fifteen pages. The story writer decides how many it needs to finish
+ * properly — a hard twelve made endings arrive mid-scene. The reader, the
+ * render pool and the export all count `pages.length`, never a constant.
+ */
+export const PAGES = { min: 12, max: 15 } as const;
 /**
  * How many movements a chapter's arc may have. The model picks the number and
- * the names to fit the premise — a rule that lasts a day wants a different shape
- * from one that plays out over generations. The validator enforces that the
- * movements tile the twelve pages; it says nothing about what they are called.
- * A fixed act structure would make every world the same shape.
+ * the names to fit the story. The validator enforces only that they tile the
+ * pages.
  */
 export const ARC_MOVEMENTS = { min: 2, max: 5 } as const;
-export const MOVEMENT_LABEL_MAX_WORDS = 6;
+/**
+ * The prompt asks for a label of at most TARGET words; the validator rejects
+ * only past MAX. A 7-word label once failed a whole chapter after its one
+ * retry — a reader-side heading is not worth a chapter.
+ */
+export const MOVEMENT_LABEL_TARGET_WORDS = 6;
+export const MOVEMENT_LABEL_MAX_WORDS = 10;
 
 /**
- * Pages are chosen from the chain, never a printout of it. Left unconstrained
- * the model writes one page per node in id order, and the book reads as twelve
- * disconnected facts. At least one effect must carry several pages so a moment
- * gets room; the cap stops the chapter collapsing onto a single idea.
+ * The scene's floor. A plate whose scene is a dozen words is drawn as the
+ * styleBible and nothing else, which is how every plate once looked alike.
+ * The prompt asks for TARGET; the validator rejects only below MIN — a floor
+ * at 150 failed a whole chapter over scenes of 117–145 characters that were
+ * complete pictures.
  */
-export const PAGES_FROM_ONE_EFFECT_MAX = 4;
-/**
- * Rule 19's floor, restated in the only unit the model can aim at: characters.
- *
- * Rule 19 is a *ratio* — the scene against the whole assembled prompt — and the
- * model never sees that assembly, so it cannot check itself against it. The
- * prompt used to translate the ratio as "aim for 60% of the 650-character cap",
- * which is 390, and 390 characters cannot pass rule 19 in any configuration:
- * the shared parts run ~640 characters with no entity references and ~866 with
- * two, so the scene needs 2/3 of that — 427 to 578 — merely to reach 40%. Every
- * page that followed the instruction failed the check.
- *
- * 580 is the worst case (full styleBible, three laws, two entity descriptions)
- * rounded up, so a scene at or above it clears rule 19 whatever else the page
- * carries. The cap is still PROMPT_LIMITS.imagePrompt; this is the floor.
- */
-export const SCENE_CHARS_MIN = 580;
-
-/** How many of the twelve pages one named entity may appear on. */
-export const ENTITY_PAGES_MAX = 5;
-/** Pages that must go somewhere not already in namedEntities. */
-export const PAGES_WITHOUT_ENTITIES_MIN = 3;
+export const SCENE_CHARS_TARGET = 150;
+export const SCENE_CHARS_MIN = 80;
 
 /**
- * Rhythm. Every sentence arriving at the same medium-long shape is most of why
- * the prose reads flat, and unlike vocabulary it is mechanically checkable: a
- * chapter has to land a short sentence somewhere. Not every page — an enforced
- * clipped closer on all twelve would be its own monotony.
+ * The main character has to be in the pictures, not just the text, or the
+ * reader is following somebody the illustrations never show. Half the pages,
+ * rounded up.
  */
-/**
- * Calibrated against live output, not guessed: at 7 words the rule fired on a
- * chapter whose prose was genuinely varied (lengths 6–18, mean 11), which would
- * have spent the chapter's single retry on a near-miss and left none for a real
- * structural fault. At 8 it separates actual monotony — everything landing at
- * 12–18 — from acceptable rhythm.
- */
-export const SHORT_SENTENCE_WORDS = 8;
-export const PAGES_WITH_SHORT_SENTENCE_MIN = 4;
+export const HERO_PAGES_MIN_SHARE = 0.5;
 
 /**
- * Register markers for PAGE TEXT ONLY. The chain is the reasoning layer and
- * stays precise; these are words that make a page read like a policy brief, a
- * lecture or a novel when there is an ordinary word for the same thing —
- * "underground trains", not "subterranean transit systems".
- *
- * Three families, because the pages went wrong in three directions: the
- * technical survey, the politics-and-economics briefing, and the literary
- * flourish. None of them is how a person tells someone what a place was like.
- *
- * Deliberately high-confidence rather than exhaustive. A blocklist cannot teach
- * voice, so this catches the repeat offenders and the prompt does the teaching.
+ * Generic words for people. Where a world's rule changes WHO exists ("a world
+ * without men"), Flux fills "people", "a crowd" or "commuters" from the
+ * present-day world — so in such a world every person in an image prompt has
+ * to be named in law-consistent words. See rule 24.
  */
-const STIFF_WORDS = [
-  // survey / technical
-  'subterranean', 'infrastructure', 'ecological', 'carrying capacity',
-  'pioneer species', 'deluge', 'culvert', 'precipitation', 'vegetation',
-  'apparatus', 'equilibrium', 'cessation', 'habitation', 'aforementioned',
-  'thereby', 'subsequently', 'optimal', 'substantial', 'numerous',
-  'individuals', 'personnel', 'vehicular', 'municipal', 'progressive',
-  'structural',
-  // politics / economics briefing
-  'governance', 'regulatory', 'jurisdiction', 'socioeconomic', 'demographic',
-  'populace', 'citizenry', 'stakeholders', 'sector', 'sectors', 'metrics',
-  'protocols', 'discourse', 'paradigm', 'moreover', 'furthermore',
-  'consequently', 'henceforth', 'whereby', 'wherein', 'thus', 'hence',
-  'empirical', 'methodology', 'hypothesis',
-  // literary flourish
-  'whilst', 'amidst', 'amongst', 'thereafter', 'betwixt', 'myriad', 'plethora',
-  'ineffable', 'liminal', 'ephemeral', 'gossamer', 'verdant', 'azure',
-  'cerulean', 'resplendent', 'poignant', 'wistful', 'testament',
-] as const;
-
+export const VAGUE_PEOPLE_PATTERN =
+  /\b(?:people|persons?|figures?|crowds?|someone|somebody|everyone|everybody|passers-?by|pedestrians|commuters|workers|villagers|townsfolk|locals|strangers|neighbou?rs|shoppers|customers|onlookers|spectators|adults|children|kids|parents|families|couples?|teenagers|students|staff|crew|passengers)\b/i;
+/** Words that pin down who a person is, so a vague word beside them is harmless. */
 /**
- * Stems, matched with any suffix. Written as a separate list because the old
- * single-alternation pattern wrapped every entry in `\b…\b`, which meant every
- * stem in it — `illuminat`, `utilis`, `colonis`, `facilitat` — could never match
- * the inflected word it was there to catch: `illuminate` has no word boundary
- * after `illuminat`. The list read as enforcement and enforced nothing.
+ * A description that says how old somebody is. hero.look and person entities
+ * must match it: "a tall slender girl" with no age was drawn as a grown woman on
+ * some pages and a teenager on others.
  */
-const STIFF_STEMS = [
-  'transit system', 'residential structure', 'mechanism', 'illuminat', 'utilis',
-  'utiliz', 'facilitat', 'commenc', 'colonis', 'coloniz', 'proliferat',
-  'diminish', 'comprise', 'legislat', 'bureaucra', 'implementat', 'allocat',
-  'prioritis', 'prioritiz', 'quantif', 'phenomen', 'inexorab', 'melanchol',
-  'luminescen', 'susurr',
-] as const;
-
-export const STIFF_REGISTER_PATTERN = new RegExp(
-  String.raw`\b(?:${STIFF_WORDS.join('|')}|(?:${STIFF_STEMS.join('|')})\w*)\b`,
+const AGE_NUMBER =
+  '(?:one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety)';
+export const AGE_PATTERN = new RegExp(
+  [
+    '\\d',
+    '\\b(?:baby|babies|infant|toddler|teen|teens|teenage|teenager|elderly|young|middle-aged|grown|adult|aged)\\b',
+    // Words that already fix an age band. "Girl", "boy" and "child" do not —
+    // they span five to nineteen, which is the ambiguity this rule is for.
+    '\\b(?:wom[ae]n|lady|ladies|mothers?|grandmothers?|grandmas?|granny|aunts?|m[ae]n|fathers?|grandfathers?|grandpas?|uncles?)\\b',
+    '\\b(?:twenties|thirties|forties|fifties|sixties|seventies|eighties|nineties)\\b',
+    `\\bof\\s+${AGE_NUMBER}\\b`,
+    `\\b${AGE_NUMBER}[- ]years?[- ]old\\b`,
+  ].join('|'),
   'i',
 );
-
+export const EXPLICIT_PEOPLE_PATTERN =
+  /\b(?:wom[ae]n|m[ae]n|girls?|boys?|ladies|lady|gentlem[ae]n|grandmothers?|grandfathers?|grandmas?|grandpas?|mothers?|fathers?|sisters?|brothers?|daughters?|sons?|aunts?|uncles?|wi(?:fe|ves)|husbands?|nuns?|monks?)\b/i;
 /**
- * The habitual register — "how things generally are" rather than "what
- * happened, once, to somebody" — is what makes a page read as an infographic
- * caption regardless of how plain its words are. Present tense stays allowed;
- * the enemy is frequency and generalisation, not tense. See rule 21.
+ * When `neverDrawn` contains any of these, the rule has changed who exists and
+ * rule 24 switches on.
  */
-export const HABITUAL_PATTERN =
-  /\b(?:increasingly|these days|nowadays|tends? to|usually|generally|typically|often|rarely|most people|many people|every (?:year|day|week)|each (?:year|day|week)|once a (?:day|week|month|year)|\d+ times a (?:day|week|month|year))\b/i;
+export const PERSON_WORD_PATTERN =
+  /^(?:wom[ae]n|m[ae]n|girls?|boys?|male|males|female|females|he|she|him|her|his|hers|adults?|child|children|kids?|elderly|old|baby|babies|humans?|people|person)$/i;
 
-/** How many of the twelve pages must carry the through-line's headNoun. See rule 20. */
-export const THROUGH_LINE_PAGES_MIN = 7;
-
-/**
- * At most this many pages may open on a definite-article proper noun or a bare
- * named-entity — "The Spindle rises…", "Halfweight Port launches…" — the
- * gazetteer rhythm that reads as an exhibit caption rather than a scene. See
- * rule 22.
- */
-export const GAZETTEER_OPENING_MAX = 4;
-export const GAZETTEER_OPENING_PATTERN = /^The [A-Z]/;
-
-/**
- * A page sentence longer than this is where the prose stops sounding like
- * someone telling you what happened and starts sounding like a novel: clause
- * after clause, gathering detail no reader asked for. Calibrated against the
- * fixture, whose sentences ran to 29 words before this rule existed — the
- * rewrite that brought them under 22 lost nothing but the literary drag.
- *
- * Paired with SHORT_SENTENCE_WORDS: one caps the ceiling, the other forbids
- * every sentence landing at the same middling length.
- */
-export const LONG_SENTENCE_WORDS = 22;
-
-/**
- * Semicolons are the single clearest marker of a page written as literature
- * rather than as speech. Nobody says one out loud. Two short sentences always
- * do the same work and read faster.
- */
-export const LITERARY_PUNCTUATION = /[;]/;
+/** Story pass: words per page. Wide on purpose — a picture book can turn on four words. */
+export const PAGE_WORDS = { min: 5, max: 90 } as const;
 
 export const EFFECTS_PER_ORDER = 4;
-export const MIN_DISTINCT_DOMAINS = 4;
-/**
- * Story chapters follow one sequence of events through a few lives, so the
- * spread that keeps a *simulated* world from being a monoculture is exactly
- * wrong for them: forcing four domains is what turned "a boy fell off his
- * bicycle" into a chapter with a politics beat and an economics beat. Two keeps
- * the events from happening in a vacuum without conscripting a policy debate.
- */
-export const MIN_DISTINCT_DOMAINS_STORY = 2;
-export const MIN_DISTINCT_SHOT_TYPES = 4;
-export const PAGE_WORDS = { min: 25, max: 45 } as const;
+export const MIN_DISTINCT_SHOT_TYPES = 3;
 export const EFFECT_MAX_WORDS = 25;
 export const WORLD_TITLE_MAX_WORDS = 6;
 export const TRANSITION_NOTE_MAX_WORDS = 40;
@@ -275,10 +215,23 @@ export const pageSchema = z.object({
   text: z.string().min(1),
   derivedFrom: z.string().min(1),
   shotType: z.enum(SHOT_TYPES),
+  /**
+   * Whether the main character is in this picture. When true, `hero.look` is
+   * spliced into the image prompt so they are drawn the same way every time.
+   * Absent on chapters stored before the story-first rework.
+   */
+  heroInScene: z.boolean().optional(),
   imagePrompt: z.string().min(1),
   entityRefs: z.array(z.string().min(1)),
   altText: z.string().min(1),
 });
+
+/**
+ * Step 2 returns everything about a page except its text. The text is the
+ * story pass's, merged in by the route, so a retry of step 2 can never touch
+ * the prose.
+ */
+export const plateSpecSchema = pageSchema.omit({ text: true });
 
 /** One movement of the chapter's arc, covering a contiguous run of pages. */
 export const movementSchema = z.object({
@@ -289,7 +242,11 @@ export const movementSchema = z.object({
 
 export const namedEntitySchema = z.object({
   name: z.string().min(1),
-  type: z.enum(['place', 'object', 'institution']),
+  /**
+   * `person`: a recurring character other than the hero, drawn by costume like
+   * the hero — and spliced in right after the hero, before the laws.
+   */
+  type: z.enum(['person', 'place', 'object', 'institution']),
   visualDescription: z.string().min(1),
 });
 
@@ -307,6 +264,14 @@ export const worldCanonSchema = z.object({
    * which the rule reaches the illustrator at all.
    */
   visualLaws: z.array(z.string().min(1)),
+  /**
+   * Words naming things that do not exist in this world ("man", "men", "his"
+   * for a world without men). Never sent to the illustrator — naming a thing
+   * to forbid it only summons it. Used by the validator to keep these words
+   * out of every image prompt. Defaults to empty for canon stored before it
+   * existed.
+   */
+  neverDrawn: z.array(z.string().min(1)).default([]),
   liveTensions: z.array(z.string().min(1)),
   supersededRules: z.array(
     z.object({ rule: z.string().min(1), chapterReversed: z.number().int().min(1) }),
@@ -319,14 +284,25 @@ export const diagramHintsSchema = z.object({
 });
 
 /**
- * The thread that carries a reader from page 1 to page 12. `role` is an
- * unnamed figure or group — never a name, never a face, same invariant as
- * `namedEntities` — and `headNoun` is one word from it so rule 20 can check
- * recurrence in page text without the model self-reporting where it appears.
+ * Retired with the story-first rework, kept so chapters stored before it still
+ * type-check and export. Replaced by `hero`.
  */
 export const throughLineSchema = z.object({
   role: z.string().min(1),
   headNoun: z.string().min(1),
+  want: z.string().min(1),
+});
+
+/**
+ * The person (or small group) the story follows. `role` is what the text calls
+ * them — a name is allowed. `look` is what the illustrator is told every time
+ * they are on a page: build, age, clothes, colours, something carried. Never a
+ * face: twelve independent generations cannot hold one, but they can hold a
+ * red coat and a coil of rope.
+ */
+export const heroSchema = z.object({
+  role: z.string().min(1),
+  look: z.string().min(1),
   want: z.string().min(1),
 });
 
@@ -335,12 +311,31 @@ export const chapterResponseSchema = z.object({
   transitionNote: z.string().optional(),
   worldTitle: z.string().optional(),
   styleBible: z.string().optional(),
+  /** One sentence: what happened in this chapter. Carried forward as the digest. */
+  summary: z.string().optional(),
+  /** The story pass's private plan — trouble, want, turn, ending. Review only. */
+  plan: z.string().optional(),
   diagramHints: diagramHintsSchema,
-  throughLine: throughLineSchema,
+  hero: heroSchema,
+  /** Legacy; see throughLineSchema. */
+  throughLine: throughLineSchema.optional(),
   arc: z.array(movementSchema).min(1),
   chain: z.array(effectSchema).min(1),
   pages: z.array(pageSchema),
   worldCanon: worldCanonSchema,
+});
+
+/** What step 2 returns: the chapter minus everything the story pass owns. */
+export const platesResponseSchema = z.object({
+  ruleType: z.enum(RULE_TYPES),
+  transitionNote: z.string().optional(),
+  styleBible: z.string().optional(),
+  worldCanon: worldCanonSchema,
+  hero: heroSchema,
+  chain: z.array(effectSchema).min(1),
+  arc: z.array(movementSchema).min(1),
+  pages: z.array(plateSpecSchema),
+  diagramHints: diagramHintsSchema,
 });
 
 export const chapterDigestSchema = z.object({
@@ -387,6 +382,9 @@ export type NamedEntity = z.infer<typeof namedEntitySchema>;
 export type WorldCanon = z.infer<typeof worldCanonSchema>;
 export type DiagramHints = z.infer<typeof diagramHintsSchema>;
 export type ThroughLine = z.infer<typeof throughLineSchema>;
+export type Hero = z.infer<typeof heroSchema>;
+export type PlateSpec = z.infer<typeof plateSpecSchema>;
+export type PlatesResponse = z.infer<typeof platesResponseSchema>;
 export type ChapterResponse = z.infer<typeof chapterResponseSchema>;
 export type ChapterDigest = z.infer<typeof chapterDigestSchema>;
 export type PreflightResult = z.infer<typeof preflightSchema>;
@@ -421,6 +419,11 @@ export interface StoredWorld {
   chapterDigests: ChapterDigest[];
 }
 
+export interface ChapterModels {
+  story: string;
+  plates: string;
+}
+
 export interface StoredChapter {
   id: string;
   worldId: string;
@@ -434,11 +437,20 @@ export interface StoredChapter {
   ruleType: CoercedRuleType;
   transitionNote?: string;
   diagramHints: DiagramHints;
-  /**
-   * The thread carrying a reader from page 1 to page 12. Absent on chapters
-   * stored before this field existed.
-   */
+  /** Legacy: chapters written before the story-first rework. */
   throughLine?: ThroughLine;
+  /** Who the story follows. Absent on chapters stored before the rework. */
+  hero?: Hero;
+  /** One sentence of what happened. Absent before the rework. */
+  summary?: string;
+  /** The story pass's private plan. Absent before it was asked for. */
+  plan?: string;
+  /**
+   * Which Gemini models wrote the story and planned the plates. A busy model
+   * hands over to the next in GEMINI_FALLBACK_MODELS, so a weak chapter may have
+   * been written by the last resort. Absent on chapters stored before fallback.
+   */
+  models?: ChapterModels;
   /** The pacing this chapter chose. Shown as the reader moves through the book. */
   arc: Movement[];
   chain: Effect[];

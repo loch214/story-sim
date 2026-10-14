@@ -26,8 +26,19 @@ import type { StoredWorld } from './types';
  * v5 adds `throughLine`. It is the thread rule 20 checks page text against —
  * reviewing whether a chapter reads as one story means seeing what that
  * thread was supposed to be.
+ *
+ * v6 adds `hero` and `summary`, from the story-first rework. `hero.look` is
+ * spliced into every plate the hero is on, so reviewing why page 9's girl
+ * looks like page 2's means seeing what she was described as.
+ * `worldCanon.neverDrawn` rides in `world` and `priorCanon` as before.
+ *
+ * v7 adds `plan` — the story writer's private plan, so a chapter whose rule
+ * never mattered can be traced to a plan that never used it — and `models`:
+ * which Gemini model wrote the story and which planned the
+ * plates. A busy model hands over to a fallback, so judging a chapter's writing
+ * means knowing whether the main model or the last resort wrote it.
  */
-export const EXPORT_VERSION = 5;
+export const EXPORT_VERSION = 7;
 
 export interface WorldExport {
   version: number;
@@ -43,8 +54,16 @@ export interface WorldExport {
     transitionNote?: string;
     status: string;
     diagramHints: unknown;
-    /** The thread rule 20 checks page text against. Omitted before v5. */
+    /** Legacy (v5): the thread the retired rule 20 checked page text against. */
     throughLine?: unknown;
+    /** Who the story follows, and how they are drawn. Omitted before v6. */
+    hero?: unknown;
+    /** One sentence of what happened. Omitted before v6. */
+    summary?: string;
+    /** The story writer's private plan — trouble, want, turn, ending. Omitted before v7. */
+    plan?: string;
+    /** Which models wrote the story and planned the plates. Omitted before v7. */
+    models?: unknown;
     priorCanon?: unknown;
     /** The pacing the chapter chose. Omitted before v3 — worlds made then have none. */
     arc?: unknown;
@@ -86,6 +105,10 @@ export async function buildWorldExport(world: StoredWorld): Promise<WorldExport>
       status: chapter.status,
       diagramHints: chapter.diagramHints,
       throughLine: chapter.throughLine,
+      hero: chapter.hero,
+      summary: chapter.summary,
+      plan: chapter.plan,
+      models: chapter.models,
       priorCanon: chapter.priorCanon,
       arc: chapter.arc,
       chain: chapter.chain,

@@ -28,11 +28,11 @@ export const metadata: Metadata = {
     template: '%s · Story-sim',
   },
   description:
-    'Change one rule of reality and read the world that results: an illustrated twelve-page chapter, derived and drawn. Add a second rule and the world compounds.',
+    'Change one rule of reality and read the world that results: an illustrated story of twelve to fifteen pages, written and drawn. Add a second rule and the world compounds.',
   openGraph: {
     title: 'Story-sim — change one rule of reality',
     description:
-      'One rule in. An illustrated twelve-page atlas of the resulting world out, read with arrow keys.',
+      'One rule in. An illustrated twelve-to-fifteen-page story of the resulting world out, read with arrow keys.',
     type: 'website',
   },
 };

@@ -312,6 +312,7 @@ export default function Reader({
         ) : spread ? (
           <PlatePage
             page={spread.page}
+            total={spread.chapter.pages.length}
             effect={spread.effect}
             image={spread.image}
             onOpenChain={(effectId) => openChain(spread.chapter.id, effectId)}
@@ -346,7 +347,7 @@ export default function Reader({
           </p>
           {/* Which movement of the arc this plate belongs to. The pacing is
               chosen per premise, so naming it is how the reader feels the shape
-              rather than just twelve pages in a row. */}
+              rather than just a row of pages. */}
           {!diagram && movement && (
             <p className="mono hidden text-[var(--accent)] lg:block">{movement.label}</p>
           )}
